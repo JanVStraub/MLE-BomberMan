@@ -15,6 +15,7 @@ import settings as s
 from fallbacks import pygame
 
 # this is a test comment
+# another test comment
 
 AGENT_API = {
     "callbacks": {
