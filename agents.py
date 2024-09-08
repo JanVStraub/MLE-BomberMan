@@ -14,6 +14,8 @@ import events as e
 import settings as s
 from fallbacks import pygame
 
+# this is a test comment
+
 AGENT_API = {
     "callbacks": {
         "setup": ["self"],
