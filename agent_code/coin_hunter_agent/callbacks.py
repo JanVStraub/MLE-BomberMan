@@ -43,17 +43,17 @@ def act(self, game_state: dict) -> str:
     :return: The action to take as a string.
     """
     # todo Exploration vs exploitation
-    random_prob = .1
-    if self.train and random.random() < random_prob:
-        self.logger.debug("Choosing action purely at random.")
-        # 80%: walk in any direction. 10% wait. 10% bomb.
-        # maybe calculate and exclude moves that are not possible
-        return np.random.choice(ACTIONS, p=[.25, .25, .25, .25])
 
     self.logger.debug("Querying model for action.")
     # return np.random.choice(ACTIONS, p=self.model)
     game_string = state_to_string(game_state)
     if game_string in self.qtable:
+        random_prob = .1
+        if self.train and random.random() < random_prob:
+            self.logger.debug("Choosing action purely at random.")
+            # 80%: walk in any direction. 10% wait. 10% bomb.
+            # maybe calculate and exclude moves that are not possible
+            return np.random.choice(ACTIONS, p=[.25, .25, .25, .25])
         return ACTIONS[np.random.choice(
             np.flatnonzero(
                 self.qtable[game_string] == np.max(self.qtable[game_string])))]
@@ -61,7 +61,9 @@ def act(self, game_state: dict) -> str:
     else:
         # add state to dict
         self.qtable[game_string] = np.zeros(4)
-        print("act", self.qtable)
+        #print("added", len(game_string))
+        #print(game_string)
+        #print("")
         # filter out moves that are not possible
         return np.random.choice(ACTIONS, p=[.25, .25, .25, .25])
 

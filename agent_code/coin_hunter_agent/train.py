@@ -71,7 +71,9 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     if state_to_string(new_game_state) in self.qtable:
         new_max_q_value = np.max(self.qtable[state_to_string(new_game_state)])
 
-    print("game", self.qtable)
+    #print("trying to adress", len(state_to_string(old_game_state)))
+    #print(state_to_string(old_game_state))
+    #print("")
     self.qtable[state_to_string(old_game_state)][np.argwhere(ACTIONS == self_action)] += self.learning_rate * (
         reward + self.gamma * new_max_q_value - self.qtable[state_to_string(old_game_state)][np.argwhere(ACTIONS == self_action)])
 
@@ -97,7 +99,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
-        pickle.dump(self.model, file)
+        pickle.dump(self.qtable, file)
 
 
 def reward_from_events(self, events: List[str]) -> int:
