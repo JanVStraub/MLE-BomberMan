@@ -131,7 +131,7 @@ def main(argv = None):
     for sub in [play_parser, replay_parser]:
         sub.add_argument("--turn-based", default=False, action="store_true",
                          help="Wait for key press until next movement")
-        sub.add_argument("--update-interval", type=float, default=0.1,
+        sub.add_argument("--update-interval", type=float, default=0.15,
                          help="How often agents take steps (ignored without GUI)")
         sub.add_argument("--log-dir", default=os.path.dirname(os.path.abspath(__file__)) + "/logs")
         sub.add_argument("--save-stats", const=True, default=False, action='store', nargs='?', help='Store the game results as .json for evaluation')

@@ -28,7 +28,7 @@ def setup(self):
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
-            self.model = pickle.load(file)
+            self.qtable = pickle.load(file)
     
     # initialize q-table or q-network
 
