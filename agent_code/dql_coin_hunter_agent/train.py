@@ -7,6 +7,8 @@ import torch
 import random
 import copy
 
+import numpy as np
+
 import events as e
 from .callbacks import state_to_features, ACTIONS, DQL_Model
 
@@ -15,10 +17,10 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 20  # keep only ... last transitions
-SAMPLE_SIZE = 15
+TRANSITION_HISTORY_SIZE = 10  # keep only ... last transitions
+SAMPLE_SIZE = 10
 GAMMA = 0.95
-UPDATE_FREQ = 10
+UPDATE_FREQ = 30
 # RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
 
 # Events
@@ -46,6 +48,7 @@ def setup_training(self):
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
+    torch.autograd.set_detect_anomaly(True)
     """
     Called once per step to allow intermediate rewards based on game events.
 
@@ -62,6 +65,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     :param new_game_state: The state the agent is in now.
     :param events: The events that occurred when going from  `old_game_state` to `new_game_state`
     """
+
     self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
     # Idea: Add your own events to hand out rewards
@@ -74,20 +78,27 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # sample
     if len(self.transitions) >= SAMPLE_SIZE:
         sampled_transitions = random.sample(list(self.transitions), SAMPLE_SIZE)
-
+        #print('Sampeld trasitions',sampled_transitions)
         # compute loss
         q_loss = torch.tensor([0.])
+        
         for transition in sampled_transitions:
             if e.SURVIVED_ROUND in events:
-                y_j = transition[3]
+                y_j = transition[3] 
             else:
                 y_j = transition[3] + GAMMA * torch.max(self.target_model(state_to_features(new_game_state)))
-            q_loss += (y_j - self.output[ACTIONS.index(transition[1])])**2 / SAMPLE_SIZE
+            q_loss = q_loss + (y_j - self.model(state_to_features(old_game_state))[ACTIONS.index(transition[1])])**2 #fix: replace self.output with new model
+
+            #ut', self.output[ACTIONS.index(transition[1])])
+            #q_loss = (y_j - torch.tensor([0.]))**2 / SAMPLE_SIZE
+
+
 
         # update Q
+
         self.optimizer.zero_grad()
-        print("Q_LOSS\n", q_loss)
-        q_loss.backward()
+        #print("Q_LOSS\n", q_loss)
+        q_loss.backward(retain_graph=True)
         self.optimizer.step()
 
         # every C-steps: update Q^
