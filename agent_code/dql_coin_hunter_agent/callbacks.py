@@ -23,10 +23,12 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-
-    
+    self.epsion = 0
+    self.min_epsilon = 0.005
+    self.max_epsilon = 1
+    self.decay_rate = 0.005
     #if self.train or not os.path.isfile("my-saved-model.pt"):
-    if not os.path.isfile("my-saved-model.pt"): 
+    if self.train or not os.path.isfile("my-saved-model.pt"): 
         self.logger.info("Setting up model from scratch.")
         self.model = DQL_Model(n_inputs = 225, n_hidden = 275, n_outputs = 4)
     
@@ -66,9 +68,13 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+    round = game_state["round"]
+    self.epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay_rate*round)
+
+
     # todo Exploration vs exploitation
-    self.random_prob = .1
-    if self.train and random.random() < self.random_prob:
+    #self.epsilon = .1
+    if self.train and random.random() < self.epsilon:
         self.logger.debug("Choosing action purely at random.")
         return np.random.choice(ACTIONS)
 
@@ -78,7 +84,22 @@ def act(self, game_state: dict) -> str:
     IDEA: save outpus in a list or something so when computing the qloss function we 
     don't need to compute the same thing twice -- analogue to the deque funtcion for the qmax calculation
     """
-    return ACTIONS[np.random.choice(np.flatnonzero(self.output == torch.max(self.output)))]
+
+    """
+    IDEA: Instead of allways choosing the highes value. Convert Qvalues into probability and then choos based on that
+    """
+    q_values = self.output
+
+    # Convert Q-values to probabilities using softmax
+    probabilities = torch.softmax(q_values, dim=0)
+
+    # Choose an action based on these probabilities
+    chosen_action_index = np.random.choice(len(ACTIONS), p=probabilities.detach().numpy())
+
+    # Get the corresponding action
+    return ACTIONS[chosen_action_index]
+    
+    #return ACTIONS[np.random.choice(np.flatnonzero(self.output == torch.max(self.output)))]
 
 
 def state_to_features(game_state: dict) -> np.array:

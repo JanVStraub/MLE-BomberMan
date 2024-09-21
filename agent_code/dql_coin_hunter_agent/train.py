@@ -27,6 +27,12 @@ UPDATE_FREQ = 20
 PLACEHOLDER_EVENT = "PLACEHOLDER"
 CLOSER_TO_COIN_EVENT = "CLOSER_TO_COIN"
 FURTHER_FROM_COIN_EVENT = "FURTHER_FROM_COIN"
+COINS_COLLECTED_5_EVENT = "5_COINS_COLLECTED"
+COINS_COLLECTED_10_EVENT = "10_COINS_COLLECTED"
+COINS_COLLECTED_15_EVENT = "15_COINS_COLLECTED"
+COINS_COLLECTED_20_EVENT = "20_COINS_COLLECTED"
+COINS_COLLECTED_30_EVENT = "30_COINS_COLLECTED"
+
 
 
 def setup_training(self):
@@ -47,7 +53,13 @@ def setup_training(self):
     self.target_model.load_state_dict(self.model.state_dict())
     self.target_model.train = False
 
-    self.saved_out_model = deque(maxlen=TRANSITION_HISTORY_SIZE)
+
+    self.coins_5 = False
+    self.coins_10 = False
+    self.coins_15 = False
+    self.coins_20 = False
+    self.coins_30 = False
+
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
@@ -72,12 +84,29 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
     # Idea: Add your own events to hand out rewards
+    """
     distance_change = coin_distance_change(old_game_state, new_game_state)
     if distance_change < 0:
         events.append(CLOSER_TO_COIN_EVENT)
     elif distance_change > 0:
         events.append(FURTHER_FROM_COIN_EVENT)
-    
+    """
+    #print("COIN COLLECTED: Coins remaining",    len(new_game_state["coins"]))
+    if len(new_game_state["coins"]) == 45 and self.coins_5 == False:
+        events.append(COINS_COLLECTED_5_EVENT)
+        self.coins_5 = True
+    elif len(new_game_state["coins"]) == 40 and self.coins_10 == False:
+        events.append(COINS_COLLECTED_10_EVENT)
+        self.coins_10 = True
+    elif len(new_game_state["coins"]) == 35 and self.coins_15 == False:
+        events.append(COINS_COLLECTED_15_EVENT)
+        self.coins_15 = True
+    elif len(new_game_state["coins"]) == 30 and self.coins_20 == False:
+        events.append(COINS_COLLECTED_20_EVENT)
+        self.coins_20 = True
+    elif len(new_game_state["coins"]) == 20 and self.coins_30 == False:
+        events.append(COINS_COLLECTED_30_EVENT)
+        self.coins_30 = True
     #reward = reward_from_events(self, events = events)
 
     # state_to_features is defined in callbacks.py
@@ -96,13 +125,11 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
                 y_j = transition[3] 
             else:
                 y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
-            q_loss = q_loss + (y_j - self.model(transition[0])[ACTIONS.index(transition[1])])**2 #fix: replace self.output with new model
-
+            q_loss = q_loss + (y_j - self.model(transition[0])[ACTIONS.index(transition[1])])**2 
 
         # update Q
         self.optimizer.zero_grad()
-        #print("Q_LOSS\n", q_loss)
-        q_loss.backward(retain_graph=True)
+        q_loss.backward()
         self.optimizer.step()
 
         # every C-steps: update Q^
@@ -144,8 +171,13 @@ def reward_from_events(self, events: List[str]) -> int:
     game_rewards = {
         e.COIN_COLLECTED: 1,
         e.INVALID_ACTION: -.5,
-        e.CLOSER_TO_COIN_EVENT: 0.1,
-        e.FURTHER_FROM_COIN_EVENT: -0.05
+        e.CLOSER_TO_COIN_EVENT: 0,
+        e.FURTHER_FROM_COIN_EVENT: 0,
+        e.COINS_COLLECTED_5_EVENT: 5,
+        e.COINS_COLLECTED_10_EVENT: 5,
+        e.COINS_COLLECTED_15_EVENT: 6,
+        e.COINS_COLLECTED_20_EVENT: 7,
+        e.COINS_COLLECTED_30_EVENT: 10,
     }
     reward_sum = 0
     for event in events:
