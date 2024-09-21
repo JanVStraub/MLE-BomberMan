@@ -81,7 +81,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             if e.SURVIVED_ROUND in events:
                 y_j = transition[3]
             else:
-                y_j = transition[3] + GAMMA * torch.max(self.target_model(state_to_features(new_game_state)))
+                y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
             q_loss += (y_j - self.output[ACTIONS.index(transition[1])])**2 / SAMPLE_SIZE
 
         # update Q
