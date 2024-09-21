@@ -25,9 +25,11 @@ def setup(self):
     """
 
     
-    if self.train or not os.path.isfile("my-saved-model.pt"):
+    #if self.train or not os.path.isfile("my-saved-model.pt"):
+    if not os.path.isfile("my-saved-model.pt"): 
         self.logger.info("Setting up model from scratch.")
         self.model = DQL_Model(n_inputs = 225, n_hidden = 275, n_outputs = 4)
+    
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -71,23 +73,22 @@ def act(self, game_state: dict) -> str:
         return np.random.choice(ACTIONS)
 
     self.logger.debug("Querying model for action.")
-    self.output = self.model(state_to_features(game_state))
+    self.output = self.model(state_to_features(game_state)) 
+    """
+    IDEA: save outpus in a list or something so when computing the qloss function we 
+    don't need to compute the same thing twice -- analogue to the deque funtcion for the qmax calculation
+    """
     return ACTIONS[np.random.choice(np.flatnonzero(self.output == torch.max(self.output)))]
 
 
 def state_to_features(game_state: dict) -> np.array:
     """
-    *This is not a required function, but an idea to structure your code.*
-
-    Converts the game state to the input of your model, i.e.
-    a feature vector.
-
-    You can find out about the state of the game environment via game_state,
-    which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
-    what it contains.
-
-    :param game_state:  A dictionary describing the current game board.
-    :return: np.array
+    Convert Game state dict into a height x with array with game state info for traing. Its entries are:
+    2 coin
+    1 crate
+    0 free tial
+    -1 stone wall
+    -2 agent
     """
     # This is the dict before the game begins and after it ends
     if game_state is None:
@@ -98,14 +99,20 @@ def state_to_features(game_state: dict) -> np.array:
     _, _, _, pos = game_state["self"]
 
     new_field = torch.tensor(game_state['field'][1:-1,1:-1].copy())
-    new_field[pos[0]-1, pos[1]-1] = -2
+    new_field[pos[0]-1, pos[1]-1] = 3   
 
     for (x, y) in coins:
         new_field[x-1, y-1] = 2
 
     # maybe filter out walls as inputs
-
-
-    # print("DEFAULT TYPE OF INPUT\n", new_field.reshape(-1).dtype)
-    # and return them as a vector
     return new_field.reshape(-1).to(torch.float32)
+"""
+def state_to_features_alt(game_state: dict) -> np.array:
+    # This is the dict before the game begins and after it ends
+    if game_state is None:
+        return None
+
+    # For example, you could construct several channels of equal shape, ...
+    coins = game_state["coins"]
+    _, _, _, pos = game_state["self"]
+"""

@@ -17,14 +17,16 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 10  # keep only ... last transitions
-SAMPLE_SIZE = 10
+TRANSITION_HISTORY_SIZE = 5  # keep only ... last transitions
+SAMPLE_SIZE = 3
 GAMMA = 0.95
-UPDATE_FREQ = 30
+UPDATE_FREQ = 20
 # RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
+CLOSER_TO_COIN_EVENT = "CLOSER_TO_COIN"
+FURTHER_FROM_COIN_EVENT = "FURTHER_FROM_COIN"
 
 
 def setup_training(self):
@@ -45,10 +47,11 @@ def setup_training(self):
     self.target_model.load_state_dict(self.model.state_dict())
     self.target_model.train = False
 
+    self.saved_out_model = deque(maxlen=TRANSITION_HISTORY_SIZE)
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     """
     Called once per step to allow intermediate rewards based on game events.
 
@@ -69,12 +72,18 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
     # Idea: Add your own events to hand out rewards
-    # if ...:
-    #     events.append(PLACEHOLDER_EVENT)
+    distance_change = coin_distance_change(old_game_state, new_game_state)
+    if distance_change < 0:
+        events.append(CLOSER_TO_COIN_EVENT)
+    elif distance_change > 0:
+        events.append(FURTHER_FROM_COIN_EVENT)
+    
+    #reward = reward_from_events(self, events = events)
 
     # state_to_features is defined in callbacks.py
+    #print("Extracted features:\n", state_to_features(old_game_state))
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
-
+    
     # sample
     if len(self.transitions) >= SAMPLE_SIZE:
         sampled_transitions = random.sample(list(self.transitions), SAMPLE_SIZE)
@@ -86,16 +95,11 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             if e.SURVIVED_ROUND in events:
                 y_j = transition[3] 
             else:
-                y_j = transition[3] + GAMMA * torch.max(self.target_model(state_to_features(new_game_state)))
-            q_loss = q_loss + (y_j - self.model(state_to_features(old_game_state))[ACTIONS.index(transition[1])])**2 #fix: replace self.output with new model
-
-            #ut', self.output[ACTIONS.index(transition[1])])
-            #q_loss = (y_j - torch.tensor([0.]))**2 / SAMPLE_SIZE
-
+                y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
+            q_loss = q_loss + (y_j - self.model(transition[0])[ACTIONS.index(transition[1])])**2 #fix: replace self.output with new model
 
 
         # update Q
-
         self.optimizer.zero_grad()
         #print("Q_LOSS\n", q_loss)
         q_loss.backward(retain_graph=True)
@@ -123,6 +127,8 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
+
+    self.transitions.clear()
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
@@ -137,6 +143,9 @@ def reward_from_events(self, events: List[str]) -> int:
     """
     game_rewards = {
         e.COIN_COLLECTED: 1,
+        e.INVALID_ACTION: -.5,
+        e.CLOSER_TO_COIN_EVENT: 0.1,
+        e.FURTHER_FROM_COIN_EVENT: -0.05
     }
     reward_sum = 0
     for event in events:
@@ -144,3 +153,41 @@ def reward_from_events(self, events: List[str]) -> int:
             reward_sum += game_rewards[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum
+
+def coin_distance_change(old_game_state, new_game_state):
+
+    _,_,_, old_pos = old_game_state["self"]
+    _,_,_, new_pos = new_game_state["self"]
+
+    coins = old_game_state["coins"]
+
+    old_distances = []
+    new_distances = []
+    for coin_pos in coins:
+        cx, cy = coin_pos
+        old_distances += [np.abs(cx - old_pos[0]) + np.abs(cy - old_pos[1])]
+        new_distances += [np.abs(cx - new_pos[0]) + np.abs(cy - new_pos[1])]
+    
+    distance_change = np.min(np.array(new_distances)) - np.min(np.array(old_distances))
+
+    return distance_change
+"""
+def remove_random_elements(list11, list21, num_elements):
+    list1 = list11
+    list2 = list21
+    if len(list1) != len(list2):
+        raise ValueError("Both lists must have the same length.")
+    
+    # Get a list of indices from which to remove elements
+    indices = list(range(len(list1)))
+    
+    # Randomly choose indices to remove
+    indices_to_remove = random.sample(indices, num_elements)
+    
+    # Remove elements at the same indices from both lists
+    for idx in sorted(indices_to_remove, reverse=True):
+        del list1[idx]
+        del list2[idx]
+    
+    return list1, list2
+"""
