@@ -38,6 +38,8 @@ class DQL_Model(torch.nn.Module):
 
         self.lin_2 = torch.nn.Linear(n_hidden, n_outputs)
 
+        self.out = None
+
 
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
@@ -58,9 +60,10 @@ class DQL_Model(torch.nn.Module):
         output = self.drop_2(output)
         output = self.lin_2(output)
 
-        self.output = output
+        self.out = output
+        print("NEW OUTPUT")
 
-        return self.output
+        return self.out
 
 
 def setup(self):
@@ -108,7 +111,7 @@ def act(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action.")
     self.output = self.model(state_to_features(game_state))
-    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.output == torch.max(self.output)))]
+    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
     
     # check for special cases, e.g. running away from bombs,
     # collect last coin or last steps of round, etc., tactical suicide

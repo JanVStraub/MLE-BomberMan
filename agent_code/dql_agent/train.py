@@ -69,19 +69,18 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
 
     q_loss = torch.tensor([0.])
-    if e.SURVIVED_ROUND in events:
-        y_j = self.transitions[-1][3]
-    else:
-        y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
-    q_loss = (y_j - self.output[0][ACTIONS.index(self_action)])**2
+    y_j = self.transitions[-1][3] + (int)(e.SURVIVED_ROUND in events) * (GAMMA * torch.max(self.target_model(self.transitions[-1][2])))
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
 
     # accumulate loss
-    q_loss.backward(retain_graph=True)
+    print("Going backward ------- -------")
+    q_loss.backward()
 
     # update Q every something steps
     if new_game_state['step'] % UPDATE_FREQ == 0:
         self.optimizer.zero_grad()
         self.optimizer.step()
+        print("weights updated ...")
 
     # every C-steps: update Q^
     if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:
