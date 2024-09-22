@@ -73,14 +73,12 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
 
     # accumulate loss
-    print("Going backward ------- -------")
     q_loss.backward()
 
     # update Q every something steps
     if new_game_state['step'] % UPDATE_FREQ == 0:
         self.optimizer.zero_grad()
         self.optimizer.step()
-        print("weights updated ...")
 
     # every C-steps: update Q^
     if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:

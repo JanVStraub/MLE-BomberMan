@@ -61,7 +61,6 @@ class DQL_Model(torch.nn.Module):
         output = self.lin_2(output)
 
         self.out = output
-        print("NEW OUTPUT")
 
         return self.out
 
@@ -102,16 +101,17 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+
+    self.logger.debug("Querying model for action.")
+    self.output = self.model(state_to_features(game_state))
+    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
+
     # todo Exploration vs exploitation
     random_prob = .1
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
         return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
-
-    self.logger.debug("Querying model for action.")
-    self.output = self.model(state_to_features(game_state))
-    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
     
     # check for special cases, e.g. running away from bombs,
     # collect last coin or last steps of round, etc., tactical suicide
