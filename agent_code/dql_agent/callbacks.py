@@ -82,6 +82,7 @@ def setup(self):
     """
     self.bomb_history = deque([], 5)
     self.current_round = 0
+    self.scores = []
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
@@ -111,7 +112,7 @@ def act(self, game_state: dict) -> str:
     recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
 
     # todo Exploration vs exploitation
-    random_prob = .1
+    random_prob = .9 * .999 ** game_state["round"]
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
@@ -217,6 +218,6 @@ def state_to_features(game_state: dict) -> np.array:
     channels.append(players_map)
 
     # concatenate them as a feature tensor (they must have the same shape), ...
-    stacked_channels = np.stack(channels)
+    stacked_channels = np.array(np.stack(channels))
     # and return them as a vector
     return torch.tensor([stacked_channels]).to(DEVICE, dtype=torch.float32)

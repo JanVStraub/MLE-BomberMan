@@ -18,6 +18,8 @@ TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
 GAMMA = 0.99
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
+LR = 0.01
+LR_GAMMA = 0.999
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
@@ -35,7 +37,8 @@ def setup_training(self):
     # (s, a, r, s')
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
     self.model.train = True
-    self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
+    self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LR)
+    self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=LR_GAMMA)
 
     self.target_model = DQL_Model()
     self.target_model.load_state_dict(self.model.state_dict())
@@ -62,8 +65,10 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
     # Idea: Add your own events to hand out rewards
-    # if ...:
-    #     events.append(PLACEHOLDER_EVENT)
+    if is_closer_to_coin(old_game_state, new_game_state):
+        events.append(e.CLOSER_TO_COIN_EVENT)
+    else:
+        events.append(e.FURTHER_FROM_COIN_EVENT)
 
     # state_to_features is defined in callbacks.py
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
@@ -79,6 +84,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     if new_game_state['step'] % UPDATE_FREQ == 0:
         self.optimizer.zero_grad()
         self.optimizer.step()
+        self.scheduler.step()
 
     # every C-steps: update Q^
     if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:
@@ -102,6 +108,8 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
+    self.scores.append(last_game_state["self"][1])
+
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
@@ -122,9 +130,8 @@ def reward_from_events(self, events: List[str]) -> int:
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
         e.INVALID_ACTION: -1,
-
-        #e.CLOSER_TO_COIN_EVENT: 0.1,
-        #e.FURTHER_FROM_COIN_EVENT: -0.1,
+        e.CLOSER_TO_COIN_EVENT: 0.1,
+        e.FURTHER_FROM_COIN_EVENT: -0.1,
 
     }
     reward_sum = 0
@@ -136,6 +143,19 @@ def reward_from_events(self, events: List[str]) -> int:
 
 def is_closer_to_coin(old_game_state, new_game_state):
 
+    old_distance = 34
+    new_distance = 34
+    
+    x_old, y_old = old_game_state["self"][3]
+    x_new, y_new = new_game_state["self"][3]
 
+    for coin in old_game_state["coins"]:
+        x, y = coin
+        old_is_closer = (torch.abs(x_old - x) + torch.abs(y_old - y) < old_distance)
+        new_is_closer = (torch.abs(x_new - x) + torch.abs(y_new - y) < old_distance)
+        old_distance = (int)(old_is_closer) * (torch.abs(x_old - x) + torch.abs(y_old - y))
+            + (1 - (int)(old_is_closer))*old_distance
+        new_distance = (int)(new_is_closer) * (torch.abs(x_new - x) + torch.abs(y_new - y))
+            + (1 - (int)(new_is_closer))*new_distance
 
-    return False
+    return new_distance < old_distance
