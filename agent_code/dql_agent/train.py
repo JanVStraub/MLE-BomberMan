@@ -122,9 +122,10 @@ def reward_from_events(self, events: List[str]) -> int:
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
         e.INVALID_ACTION: -1,
-        e.CLOSER_TO_COIN_EVENT: 0.1,
-        e.FURTHER_FROM_COIN_EVENT: -0.1,
-        # PLACEHOLDER_EVENT: -.1  # idea: the custom event is bad
+
+        #e.CLOSER_TO_COIN_EVENT: 0.1,
+        #e.FURTHER_FROM_COIN_EVENT: -0.1,
+
     }
     reward_sum = 0
     for event in events:
