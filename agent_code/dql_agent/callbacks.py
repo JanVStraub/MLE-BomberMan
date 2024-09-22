@@ -1,6 +1,7 @@
 import os
 import pickle
 import random
+from collections import deque
 
 import numpy as np
 import torch
@@ -79,7 +80,8 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-        
+    self.bomb_history = deque([], 5)
+    self.current_round = 0
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
@@ -91,6 +93,8 @@ def setup(self):
             self.model = pickle.load(file)
     self.model.to(DEVICE)
 
+def reset_self(self):
+    self.bomb_history = deque([], 5)
 
 def act(self, game_state: dict) -> str:
     """
@@ -119,6 +123,11 @@ def act(self, game_state: dict) -> str:
     """
     Inspired from the rule based agent:
     """
+    # Check if we are in a different round
+    if game_state["round"] != self.current_round:
+        reset_self(self)
+        self.current_round = game_state["round"]
+    # Gather information about the game state
     arena = game_state['field']
     _, _, bombs_left, (x, y) = game_state['self']
     bombs = game_state['bombs']
@@ -147,11 +156,20 @@ def act(self, game_state: dict) -> str:
     if (x, y) in valid_tiles: valid_actions.append('WAIT')
     # Disallow the BOMB action if agent dropped a bomb in the same spot recently
     if (bombs_left > 0) and (x, y) not in self.bomb_history: valid_actions.append('BOMB')
-    
     if recommended_action in valid_actions:
+        if recommended_action == 'BOMB':
+            self.bomb_history.append((x, y))
         return recommended_action
+    elif valid_actions:
+        action_to_take = random.choice(valid_actions)
+        if action_to_take == 'BOMB':
+            self.bomb_history.append((x, y)) 
+        return action_to_take
     else:
-        return random.choice(valid_actions)
+        action_to_take_rand = random.choice(ACTIONS)
+        if action_to_take_rand == 'BOMB':
+            self.bomb_history.append((x, y)) 
+        return action_to_take_rand
 
 
 
