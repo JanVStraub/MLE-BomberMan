@@ -8,32 +8,37 @@ import torch
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
+DEVICE = 'cpu'
+
+
 class DQL_Model(torch.nn.Module):
 
     def __init__(self, n_hidden: int = 128, n_outputs: int = 6, dropout: float = 0.3):
         super().__init__()
-        # input size: 16x16 (maybe use different channels for coins or players)
-        self.conv_1 = torch.nn.Conv2D(
+        # input size: 17x17 (maybe use different channels for coins or players)
+        self.conv_1 = torch.nn.Conv2d(
             in_channels=4, out_channels=25, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
-        # output size: 25x16x16
+        # output size: 25x13x13
 
-        self.conv_2 = torch.nn.Conv2D(
-            in_channels=25, out_chanels=16, kernel_size=3)
+        self.conv_2 = torch.nn.Conv2d(
+            in_channels=25, out_channels=16, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
-        # output size: 16x16x16
+        # output size: 16x11x11
         self.maxPool = torch.nn.MaxPool2d(kernel_size=2)
-        # output size: 16x8x8
+        # output size: 16x5x5
 
         self.flat = torch.nn.Flatten()
-        # output size: 1024
+        # output size: 400
 
-        self.lin_1 = torch.nn.Linear(1024, n_hidden)
+        self.lin_1 = torch.nn.Linear(400, n_hidden)
         self.act_3 = torch.nn.ReLU()
         self.drop_2 = torch.nn.Dropout(dropout)
 
         self.lin_2 = torch.nn.Linear(n_hidden, n_outputs)
+
+        self.out = None
 
 
         # initialize weights
@@ -55,7 +60,9 @@ class DQL_Model(torch.nn.Module):
         output = self.drop_2(output)
         output = self.lin_2(output)
 
-        return output
+        self.out = output
+
+        return self.out
 
 
 def setup(self):
@@ -76,12 +83,13 @@ def setup(self):
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
-        torch.seed(42)
+        torch.manual_seed(42)
         self.model = DQL_Model()
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
             self.model = pickle.load(file)
+    self.model.to(DEVICE)
 
 
 def act(self, game_state: dict) -> str:
@@ -93,19 +101,20 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+
+    self.logger.debug("Querying model for action.")
+    self.output = self.model(state_to_features(game_state))
+    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
+
     # todo Exploration vs exploitation
     random_prob = .1
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
         return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
-
-    self.logger.debug("Querying model for action.")
-    self.output = self.model(state_to_features(game_state))
-    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.output == torch.max(self.output)))]
     
     # check for special cases, e.g. running away from bombs,
-    # collect last coin or last steps of round, etc.
+    # collect last coin or last steps of round, etc., tactical suicide
     
     """
     Inspired from the rule based agent:
@@ -170,13 +179,13 @@ def state_to_features(game_state: dict) -> np.array:
     explosion_map = game_state["explosion_map"]
 
     # create coin map
-    coin_map = np.zeros((16,16))
+    coin_map = np.zeros((17,17))
     for (x,y) in game_state["coins"]:
         coin_map[x,y] = 1.
     channels.append(coin_map)
 
     # create players map (positive value: self, negative: other players)
-    players_map = np.zeros((16,16))
+    players_map = np.zeros((17,17))
     _, s, b, (x,y) = game_state["self"]
     players_map[x,y] = s + 1
     explosion_map[x,y] = -(int)(b)
@@ -192,4 +201,4 @@ def state_to_features(game_state: dict) -> np.array:
     # concatenate them as a feature tensor (they must have the same shape), ...
     stacked_channels = np.stack(channels)
     # and return them as a vector
-    return torch.tensor(stacked_channels)
+    return torch.tensor([stacked_channels]).to(DEVICE, dtype=torch.float32)
