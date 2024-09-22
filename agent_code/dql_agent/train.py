@@ -11,8 +11,8 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 15  # keep only ... last transitions
-SAMPLE_SIZE = 10
+TRANSITION_HISTORY_SIZE = 5  # keep only ... last transitions
+SAMPLE_SIZE = 3
 GAMMA = 0.99
 UPDATE_FREQ = 10
 
@@ -101,7 +101,8 @@ def reward_from_events(self, events: List[str]) -> int:
         e.BOMB_DROPPED: 0.1,
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
-        PLACEHOLDER_EVENT: -.1  # idea: the custom event is bad
+        e.INVALID_ACTION: -1,
+        #PLACEHOLDER_EVENT: -.1  # idea: the custom event is bad
     }
     reward_sum = 0
     for event in events:
