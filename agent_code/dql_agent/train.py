@@ -19,7 +19,7 @@ TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
 GAMMA = 0.99
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
-LR = 0.01
+LR = 0.05
 LR_GAMMA = 0.999
 
 # Events
@@ -92,6 +92,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
         self.target_model.train = False
 
+    #self.second_to_last_gamestate = new_game_state
+
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
     """
@@ -110,7 +112,13 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
     self.scores.append(last_game_state["self"][1])
+    
+    q_loss = torch.tensor([0.])
+    y_j = self.transitions[-1][3] #+ (int)(e.SURVIVED_ROUND in events) * (GAMMA * torch.max(self.target_model(self.transitions[-1][2])))
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
 
+    # accumulate loss
+    q_loss.backward()
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)

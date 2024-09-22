@@ -113,14 +113,11 @@ def act(self, game_state: dict) -> str:
 
     # todo Exploration vs exploitation
     random_prob = .9 * .999 ** game_state["round"]
-    if self.train and random.random() < random_prob:
-        self.logger.debug("Choosing action purely at random.")
-        # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
+    
     
     # check for special cases, e.g. running away from bombs,
     # collect last coin or last steps of round, etc., tactical suicide
-    
+    #return recommended_action
     """
     Inspired from the rule based agent:
     """
@@ -157,6 +154,13 @@ def act(self, game_state: dict) -> str:
     if (x, y) in valid_tiles: valid_actions.append('WAIT')
     # Disallow the BOMB action if agent dropped a bomb in the same spot recently
     if (bombs_left > 0) and (x, y) not in self.bomb_history: valid_actions.append('BOMB')
+    if self.train and random.random() < random_prob:
+        self.logger.debug("Choosing action purely at random.")
+        # 80%: walk in any direction. 10% wait. 10% bomb.
+        random_choice = np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
+        if random_choice == 'BOMB':
+            self.bomb_history.append((x, y)) 
+        return random_choice
     if recommended_action in valid_actions:
         if recommended_action == 'BOMB':
             self.bomb_history.append((x, y))
