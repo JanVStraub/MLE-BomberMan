@@ -4,6 +4,7 @@ import pickle
 from typing import List
 
 import torch
+import numpy as np
 import copy
 
 import events as e
@@ -151,11 +152,9 @@ def is_closer_to_coin(old_game_state, new_game_state):
 
     for coin in old_game_state["coins"]:
         x, y = coin
-        old_is_closer = (torch.abs(x_old - x) + torch.abs(y_old - y) < old_distance)
-        new_is_closer = (torch.abs(x_new - x) + torch.abs(y_new - y) < old_distance)
-        old_distance = (int)(old_is_closer) * (torch.abs(x_old - x) + torch.abs(y_old - y))
-            + (1 - (int)(old_is_closer))*old_distance
-        new_distance = (int)(new_is_closer) * (torch.abs(x_new - x) + torch.abs(y_new - y))
-            + (1 - (int)(new_is_closer))*new_distance
+        old_is_closer = (np.abs(x_old - x) + np.abs(y_old - y) < old_distance)
+        new_is_closer = (np.abs(x_new - x) + np.abs(y_new - y) < old_distance)
+        old_distance = (int)(old_is_closer) * (np.abs(x_old - x) + np.abs(y_old - y)) + (1 - (int)(old_is_closer)) * old_distance
+        new_distance = (int)(new_is_closer) * (np.abs(x_new - x) + np.abs(y_new - y)) + (1 - (int)(new_is_closer)) * new_distance
 
     return new_distance < old_distance
