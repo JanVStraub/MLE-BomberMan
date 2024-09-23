@@ -16,10 +16,10 @@ Transition = namedtuple('Transition',
 
 # Hyper parameters -- DO modify
 TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
-GAMMA = 0.99
+GAMMA = 0.95
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
-LR = 0.01
+LR = 0.1
 LR_GAMMA = 0.999
 
 # Events
@@ -74,18 +74,21 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # state_to_features is defined in callbacks.py
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
 
+    # if new_game_state['step'] % UPDATE_FREQ == 0:
+    self.optimizer.zero_grad()
+
     q_loss = torch.tensor([0.])
-    y_j = self.transitions[-1][3] + (int)(e.SURVIVED_ROUND in events) * (GAMMA * torch.max(self.target_model(self.transitions[-1][2])))
+    is_last_step = not ((e.GOT_KILLED in events) or (e.KILLED_SELF in events))
+    y_j = self.transitions[-1][3] + (int)(is_last_step) * (GAMMA * torch.max(self.target_model(self.transitions[-1][2])))
     q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
 
     # accumulate loss
     q_loss.backward()
 
     # update Q every something steps
-    if new_game_state['step'] % UPDATE_FREQ == 0:
-        self.optimizer.zero_grad()
-        self.optimizer.step()
-        self.scheduler.step()
+    # if new_game_state['step'] % UPDATE_FREQ == 0:
+    self.optimizer.step()
+    self.scheduler.step()
 
     # every C-steps: update Q^
     if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:
@@ -110,6 +113,18 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
     self.scores.append(last_game_state["self"][1])
+
+    self.optimizer.zero_grad()
+
+    q_loss = torch.tensor([0.])
+    y_j = self.transitions[-1][3]
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
+
+    # calculate loss
+    q_loss.backward()
+
+    self.optimizer.step()
+    self.scheduler.step()
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
@@ -156,5 +171,8 @@ def is_closer_to_coin(old_game_state, new_game_state):
         new_is_closer = (np.abs(x_new - x) + np.abs(y_new - y) < old_distance)
         old_distance = (int)(old_is_closer) * (np.abs(x_old - x) + np.abs(y_old - y)) + (1 - (int)(old_is_closer)) * old_distance
         new_distance = (int)(new_is_closer) * (np.abs(x_new - x) + np.abs(y_new - y)) + (1 - (int)(new_is_closer)) * new_distance
+
+    if old_distance == new distance and new_distance = 0:
+        return True
 
     return new_distance < old_distance

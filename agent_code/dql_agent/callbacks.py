@@ -9,35 +9,31 @@ import torch
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
-DEVICE = 'cpu'
+DEVICE = 'cuda'
 
 
 class DQL_Model(torch.nn.Module):
 
     def __init__(self, n_hidden: int = 128, n_outputs: int = 6, dropout: float = 0.3):
         super().__init__()
-        # input size: 17x17 (maybe use different channels for coins or players)
+        # input size: 1x4x17x17
         self.conv_1 = torch.nn.Conv2d(
-            in_channels=4, out_channels=25, kernel_size=5)
+            in_channels=4, out_channels=32, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
-        # output size: 25x13x13
+        # output size: 1x32x13x13
 
         self.conv_2 = torch.nn.Conv2d(
-            in_channels=25, out_channels=16, kernel_size=3)
+            in_channels=32, out_channels=16, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
-        # output size: 16x11x11
-        self.maxPool = torch.nn.MaxPool2d(kernel_size=2)
-        # output size: 16x5x5
+        # output size: 1x16x11x11
+        self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
+        # output size: 1x16x6x6
 
         self.flat = torch.nn.Flatten()
-        # output size: 400
+        # output size: 576
 
-        self.lin_1 = torch.nn.Linear(400, n_hidden)
-        self.act_3 = torch.nn.ReLU()
-        self.drop_2 = torch.nn.Dropout(dropout)
-
-        self.lin_2 = torch.nn.Linear(n_hidden, n_outputs)
+        self.lin = torch.nn.Linear(576, n_outputs)
 
         self.out = None
 
@@ -45,8 +41,7 @@ class DQL_Model(torch.nn.Module):
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
         torch.nn.init.xavier_uniform_(self.conv_2.weight)
-        torch.nn.init.xavier_uniform_(self.lin_1.weight)
-        torch.nn.init.xavier_uniform_(self.lin_2.weight)
+        torch.nn.init.xavier_uniform_(self.lin.weight)
 
 
     def forward(self, inputs):
@@ -57,10 +52,7 @@ class DQL_Model(torch.nn.Module):
         output = self.act_2(self.conv_2(output))
         output = self.maxPool(output)
 
-        output = self.act_3(self.lin_1(self.flat(output)))
-        output = self.drop_2(output)
-        output = self.lin_2(output)
-
+        output = self.lin(self.flat(output))
         self.out = output
 
         return self.out
@@ -112,7 +104,7 @@ def act(self, game_state: dict) -> str:
     recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
 
     # todo Exploration vs exploitation
-    random_prob = .9 * .999 ** game_state["round"]
+    random_prob = .8 * .999 ** game_state["round"]
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
