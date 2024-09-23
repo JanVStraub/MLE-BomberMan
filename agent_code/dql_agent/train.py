@@ -150,6 +150,7 @@ def reward_from_events(self, events: List[str]) -> int:
     certain behavior.
     """
     game_rewards = {
+        e.WAITED: -0.1,
         e.COIN_COLLECTED: 1,
         e.COIN_FOUND: 0.4,
         e.GOT_KILLED: -20,
