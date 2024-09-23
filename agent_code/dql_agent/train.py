@@ -126,6 +126,11 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.optimizer.step()
     self.scheduler.step()
 
+    # every C-steps: update Q^
+    if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
+        self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
+        self.target_model.train = False
+
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
