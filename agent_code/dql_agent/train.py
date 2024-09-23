@@ -118,7 +118,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     q_loss = torch.tensor([0.])
     y_j = self.transitions[-1][3]
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
 
     # calculate loss
     q_loss.backward()
@@ -172,7 +172,7 @@ def is_closer_to_coin(old_game_state, new_game_state):
         old_distance = (int)(old_is_closer) * (np.abs(x_old - x) + np.abs(y_old - y)) + (1 - (int)(old_is_closer)) * old_distance
         new_distance = (int)(new_is_closer) * (np.abs(x_new - x) + np.abs(y_new - y)) + (1 - (int)(new_is_closer)) * new_distance
 
-    if old_distance == new distance and new_distance = 0:
+    if old_distance == new_distance and new_distance == 0:
         return True
 
     return new_distance < old_distance

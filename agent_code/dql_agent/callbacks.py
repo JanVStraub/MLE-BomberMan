@@ -9,7 +9,7 @@ import torch
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
-DEVICE = 'cuda'
+DEVICE = 'cpu'
 
 
 class DQL_Model(torch.nn.Module):
@@ -212,4 +212,4 @@ def state_to_features(game_state: dict) -> np.array:
     # concatenate them as a feature tensor (they must have the same shape), ...
     stacked_channels = np.array(np.stack(channels))
     # and return them as a vector
-    return torch.tensor([stacked_channels]).to(DEVICE, dtype=torch.float32)
+    return torch.tensor(np.array([stacked_channels])).to(DEVICE, dtype=torch.float32)
