@@ -19,7 +19,7 @@ TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
 GAMMA = 0.95
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
-LR = 0.1
+LR = 0.02
 LR_GAMMA = 0.999
 
 # Events
@@ -83,6 +83,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # accumulate loss
     q_loss.backward()
+    self.forward_backward_toggle = False
 
     # update Q every something steps
     # if new_game_state['step'] % UPDATE_FREQ == 0:
@@ -114,22 +115,27 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     self.scores.append(last_game_state["self"][1])
 
-    self.optimizer.zero_grad()
+    if not e.SURVIVED_ROUND in events:
 
-    q_loss = torch.tensor([0.])
-    y_j = self.transitions[-1][3]
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
+        self.optimizer.zero_grad()
 
-    # calculate loss
-    q_loss.backward()
+        q_loss = torch.tensor([0.])
+        y_j = self.transitions[-1][3]
+        q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
 
-    self.optimizer.step()
-    self.scheduler.step()
+        # calculate loss
+        if self.forward_backward_toggle == False:
+            print("-------------------forward backward toggle violation!----------------")
+        else:
+            q_loss.backward()
 
-    # every C-steps: update Q^
-    if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
-        self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
-        self.target_model.train = False
+            self.optimizer.step()
+            self.scheduler.step()
+
+            # every C-steps: update Q^
+            if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
+                self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
+                self.target_model.train = False
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:

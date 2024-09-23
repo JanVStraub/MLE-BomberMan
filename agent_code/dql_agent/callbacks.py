@@ -72,7 +72,7 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-    self.bomb_history = deque([], 5)
+    self.forward_backward_toggle = False
     self.current_round = 0
     self.scores = []
     
@@ -86,8 +86,6 @@ def setup(self):
             self.model = pickle.load(file)
     self.model.to(DEVICE)
 
-def reset_self(self):
-    self.bomb_history = deque([], 5)
 
 def act(self, game_state: dict) -> str:
     """
@@ -101,6 +99,7 @@ def act(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action.")
     self.model.out = self.model(state_to_features(game_state))
+    self.forward_backward_toggle = True
     recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
 
     # todo Exploration vs exploitation
