@@ -100,7 +100,7 @@ def act(self, game_state: dict) -> str:
     """
 
     self.logger.debug("Querying model for action.")
-    self.out = self.model(state_to_features(game_state))
+    self.model.out = self.model(state_to_features(game_state))
     recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
 
     # todo Exploration vs exploitation

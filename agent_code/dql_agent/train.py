@@ -78,8 +78,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.optimizer.zero_grad()
 
     q_loss = torch.tensor([0.])
-    is_last_step = not ((e.GOT_KILLED in events) or (e.KILLED_SELF in events))
-    y_j = self.transitions[-1][3] + (int)(is_last_step) * (GAMMA * torch.max(self.target_model(self.transitions[-1][2])))
+    y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
     q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
 
     # accumulate loss
@@ -110,6 +109,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     :param self: The same object that is passed to all of your callbacks.
     """
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
+
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
     self.scores.append(last_game_state["self"][1])
