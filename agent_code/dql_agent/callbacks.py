@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 
-ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
+ACTIONS = ['LEFT', 'RIGHT', 'UP', 'DOWN', 'WAIT', 'BOMB']
 
 DEVICE = 'cpu'
 
@@ -75,6 +75,9 @@ def setup(self):
     self.forward_backward_toggle = False
     self.current_round = 0
     self.scores = []
+    self.max_epsilon = 1.0           
+    self.min_epsilon = 0.05           
+    self.decay_rate = 0.0001
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
@@ -99,19 +102,55 @@ def act(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action.")
     self.model.out = self.model(state_to_features(game_state))
+    #print("MODEL OUT",self.model.out[0][1])
     self.forward_backward_toggle = True
-    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
+    #recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
 
-    # todo Exploration vs exploitation
-    random_prob = .8 * .999 ** game_state["round"]
-    if self.train and random.random() < random_prob:
+    """
+    Epsion greedy for probability in training:
+    """
+    epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay_rate*game_state["round"])
+    """
+    Inspired from the rule based agent: Check it the move is possible (Dont walk into a wall)
+    """
+    # Gather information about the game state
+    arena = game_state['field']
+    _, _, _, (x, y) = game_state['self']
+    # Check which moves make sense at all
+    directions = [(x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+    valid_tiles, valid_actions = [], []
+    for d in directions:
+        if ((arena[d] == 0) and
+                (game_state['explosion_map'][d] < 1)): # Maybe remove the explosion map check?
+            valid_tiles.append(d)
+    if (x - 1, y) in valid_tiles: valid_actions.append('LEFT')
+    if (x + 1, y) in valid_tiles: valid_actions.append('RIGHT')
+    if (x, y - 1) in valid_tiles: valid_actions.append('UP')
+    if (x, y + 1) in valid_tiles: valid_actions.append('DOWN')
+    if (x, y) in valid_tiles: valid_actions.append('WAIT')
+    valid_actions.append('BOMB')
+
+
+
+    if self.train and random.random() < epsilon:
         self.logger.debug("Choosing action purely at random.")
-        # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
-    
-    # check for special cases, e.g. running away from bombs,
-    # collect last coin or last steps of round, etc., tactical suicide
-    return recommended_action
+        random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
+        return random_choice
+   
+    # Choosing the action with the highest Q-value if its not in valid_actions
+    # Get indices of valid actions
+    valid_indices = [ACTIONS.index(action) for action in valid_actions]
+    #print("Valid indices",valid_indices)
+    valid_q_values = self.model.out[0][valid_indices]
+    # Filter self.model.out to only consider valid actions
+   
+
+    # Select the valid action with the highest Q-value
+    # Not shure if this is the right way
+    best_valid_action_idx = torch.argmax(valid_q_values).item()
+    return ACTIONS[valid_indices[best_valid_action_idx]]
+
+
 
 
 

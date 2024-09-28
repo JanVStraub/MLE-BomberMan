@@ -19,7 +19,7 @@ TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
 GAMMA = 0.95
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
-LR = 0.02
+LR = 0.01
 LR_GAMMA = 0.999
 
 # Events
@@ -148,18 +148,21 @@ def reward_from_events(self, events: List[str]) -> int:
 
     Here you can modify the rewards your agent get so as to en/discourage
     certain behavior.
+
+    Maybe the rewards are too strong, try decreasing the weight
     """
     game_rewards = {
-        e.COIN_COLLECTED: 1,
-        e.COIN_FOUND: 0.4,
-        e.GOT_KILLED: -20,
-        e.KILLED_SELF: -30,
-        e.BOMB_DROPPED: 0.1,
-        e.KILLED_OPPONENT: 5,
-        e.CRATE_DESTROYED: 0.1,
-        e.INVALID_ACTION: -1,
+        e.COIN_COLLECTED: 5,
+        #e.COIN_FOUND: 0.4,
+        e.GOT_KILLED: -5,
+        e.KILLED_SELF: -5,
+        e.BOMB_DROPPED: -1,
+        #e.KILLED_OPPONENT: 10,
+        #e.CRATE_DESTROYED: 0.1,
+        #e.INVALID_ACTION: -1,
         e.CLOSER_TO_COIN_EVENT: 0.1,
-        e.FURTHER_FROM_COIN_EVENT: -0.1,
+        #e.FURTHER_FROM_COIN_EVENT: -0.1,
+        #e.WAITED: -0.1
 
     }
     reward_sum = 0
