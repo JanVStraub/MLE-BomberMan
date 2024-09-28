@@ -7,39 +7,40 @@ import numpy as np
 import torch
 
 
-ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
+ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']# , 'WAIT', 'BOMB']
 
 DEVICE = 'cpu'
 
 
 class DQL_Model(torch.nn.Module):
 
-    def __init__(self, n_hidden: int = 128, n_outputs: int = 6, dropout: float = 0.3):
+    def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.3):
         super().__init__()
         # input size: 1x4x17x17
         self.conv_1 = torch.nn.Conv2d(
-            in_channels=4, out_channels=32, kernel_size=5)
+            in_channels=3, out_channels=64, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
         # output size: 1x32x13x13
 
         self.conv_2 = torch.nn.Conv2d(
-            in_channels=32, out_channels=16, kernel_size=3)
+            in_channels=64, out_channels=32, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
-        # output size: 1x16x11x11
+        # output size: 1x32x11x11
         self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
-        # output size: 1x16x6x6
+        # output size: 1x32x6x6
 
         self.flat = torch.nn.Flatten()
-        # output size: 576
+        # output size: 1152
 
-        self.lin = torch.nn.Linear(576, n_outputs)
+        self.lin = torch.nn.Linear(1152, n_outputs)
 
         self.out = None
 
 
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
+        # print("CONV 1 SIZE:", self.conv_1.weight.data.size(), "---------------------")
         torch.nn.init.xavier_uniform_(self.conv_2.weight)
         torch.nn.init.xavier_uniform_(self.lin.weight)
 
@@ -107,7 +108,7 @@ def act(self, game_state: dict) -> str:
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
+        return np.random.choice(ACTIONS)#, p=[.2, .2, .2, .2, .1, .1])
     
     # check for special cases, e.g. running away from bombs,
     # collect last coin or last steps of round, etc., tactical suicide
@@ -155,7 +156,7 @@ def state_to_features(game_state: dict) -> np.array:
         players_map[x,y] = -s - 1
         explosion_map[x,y] = -(int)(b)
     
-    channels.append(explosion_map)
+    #channels.append(explosion_map)
     channels.append(players_map)
 
     # concatenate them as a feature tensor (they must have the same shape), ...

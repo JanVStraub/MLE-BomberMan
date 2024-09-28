@@ -16,7 +16,7 @@ Transition = namedtuple('Transition',
 
 # Hyper parameters -- DO modify
 TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
-GAMMA = 0.95
+GAMMA = 0.9
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
 LR = 0.02
