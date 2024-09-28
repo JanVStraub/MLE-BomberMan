@@ -18,22 +18,22 @@ class DQL_Model(torch.nn.Module):
         super().__init__()
         # input size: 1x4x17x17
         self.conv_1 = torch.nn.Conv2d(
-            in_channels=3, out_channels=64, kernel_size=5)
+            in_channels=3, out_channels=256, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
         # output size: 1x32x13x13
 
         self.conv_2 = torch.nn.Conv2d(
-            in_channels=64, out_channels=32, kernel_size=3)
+            in_channels=256, out_channels=64, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
         # output size: 1x32x11x11
         self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
-        # output size: 1x32x6x6
+        # output size: 1x64x6x6
 
         self.flat = torch.nn.Flatten()
-        # output size: 1152
+        # output size: 2304
 
-        self.lin = torch.nn.Linear(1152, n_outputs)
+        self.lin = torch.nn.Linear(2304, n_outputs)
 
         self.out = None
 
