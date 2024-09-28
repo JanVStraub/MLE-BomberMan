@@ -18,7 +18,7 @@ Transition = namedtuple('Transition',
 TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
 GAMMA = 0.2
 UPDATE_FREQ = 3
-TARGET_UPDATE_FREQ = 10
+TARGET_UPDATE_FREQ = 5
 LR = 0.01
 LR_GAMMA = 0.999
 
@@ -81,8 +81,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
     y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
     self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2\
-        - 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2#\
+        #- 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
     self.logger.debug(f"q-Loss = {q_loss}")
 
     # accumulate loss
