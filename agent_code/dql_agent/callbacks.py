@@ -121,7 +121,7 @@ def act(self, game_state: dict) -> str:
     # valid_actions.append('BOMB') # maybe edit when training with bombs
 
 
-    epsilon = .95 * .99 ** game_state["round"]
+    epsilon = 1 * (int)(game_state["round"] < 250) + (1-(int)(game_state["round"] < 250)) * .1 * .99 ** game_state["round"]
     if self.train and random.random() < epsilon:
         self.logger.debug("Choosing action purely at random.")
         random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action

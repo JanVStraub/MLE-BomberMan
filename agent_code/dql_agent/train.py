@@ -6,6 +6,7 @@ from typing import List
 import torch
 import numpy as np
 import copy
+import matplotlib.pyplot as plt
 
 import events as e
 from .callbacks import state_to_features, DQL_Model, ACTIONS
@@ -81,9 +82,11 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
     y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
     self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2\
-        - 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
-    self.logger.debug(f"q-Loss = {q_loss}")
+
+    q_loss_1 = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
+    q_loss_2 = - 60 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
+    q_loss = q_loss_1# + q_loss_2
+    self.logger.debug(f"q-Loss = {q_loss_1} + {q_loss_2} = {q_loss}")
 
     # accumulate loss
     q_loss.backward()
@@ -117,7 +120,8 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
-    self.scores.append(last_game_state["self"][1])
+    _, score, _, _ = last_game_state["self"]
+    self.scores.append(score)
 
     if not e.SURVIVED_ROUND in events:
 
@@ -125,7 +129,11 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
         q_loss = torch.tensor([0.])
         y_j = self.transitions[-1][3]
-        q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
+
+        q_loss_1 = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
+        q_loss_2 = - 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(last_action)])**2
+        q_loss = q_loss_1# + q_loss_2
+        self.logger.debug(f"q-Loss = {q_loss_1} + {q_loss_2} = {q_loss}")
 
         # calculate loss
         if self.forward_backward_toggle == False:
@@ -141,10 +149,18 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
                 self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
                 self.target_model.train = False
 
+    plot_scores(self.scores)
+
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
 
+
+def plot_scores(scores):
+    plt.figure()
+    plt.plot(np.arange(len(scores)), scores)
+    plt.savefig("scores.pdf", format="pdf")
+    plt.close()
 
 def reward_from_events(self, events: List[str]) -> int:
     """
@@ -162,9 +178,9 @@ def reward_from_events(self, events: List[str]) -> int:
         e.BOMB_DROPPED: 0.1,
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
-        #e.INVALID_ACTION: -0.05,
+        e.INVALID_ACTION: -0.05,
         e.CLOSER_TO_COIN_EVENT: 0.1,
-        #e.FURTHER_FROM_COIN_EVENT: -0.1,
+        e.FURTHER_FROM_COIN_EVENT: -0.15,
     }
     reward_sum = 0
     for event in events:
