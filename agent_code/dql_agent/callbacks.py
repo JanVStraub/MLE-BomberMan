@@ -21,12 +21,12 @@ class DQL_Model(torch.nn.Module):
             in_channels=3, out_channels=256, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
-        # output size: 1x32x13x13
+        # output size: 1x256x13x13
 
         self.conv_2 = torch.nn.Conv2d(
             in_channels=256, out_channels=64, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
-        # output size: 1x32x11x11
+        # output size: 1x64x11x11
         self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
         # output size: 1x64x6x6
 
@@ -98,22 +98,47 @@ def act(self, game_state: dict) -> str:
     :return: The action to take as a string.
     """
 
-    self.logger.debug("Querying model for action.")
+    # self.logger.debug("Querying model for action.")
     self.model.out = self.model(state_to_features(game_state))
     self.forward_backward_toggle = True
-    recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
-
-    # todo Exploration vs exploitation
-    random_prob = .8 * .999 ** game_state["round"]
-    if self.train and random.random() < random_prob:
-        self.logger.debug("Choosing action purely at random.")
-        # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS)#, p=[.2, .2, .2, .2, .1, .1])
+    # recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
     
-    # check for special cases, e.g. running away from bombs,
-    # collect last coin or last steps of round, etc., tactical suicide
-    return recommended_action
+    # Gather information about the game state
+    arena = game_state['field']
+    _, _, _, (x, y) = game_state['self']
+    # Check which moves make sense at all
+    directions = [(x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+    valid_tiles, valid_actions = [], []
+    for d in directions:
+        if ((arena[d] == 0) and
+                (game_state['explosion_map'][d] < 1)): # Maybe remove the explosion map check?
+            valid_tiles.append(d)
+    if (x - 1, y) in valid_tiles: valid_actions.append('LEFT')
+    if (x + 1, y) in valid_tiles: valid_actions.append('RIGHT')
+    if (x, y - 1) in valid_tiles: valid_actions.append('UP')
+    if (x, y + 1) in valid_tiles: valid_actions.append('DOWN')
+    # if (x, y) in valid_tiles: valid_actions.append('WAIT')
+    # valid_actions.append('BOMB') # maybe edit when training with bombs
 
+
+    epsilon = .95 * .99 ** game_state["round"]
+    if self.train and random.random() < epsilon:
+        self.logger.debug("Choosing action purely at random.")
+        random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
+        return random_choice
+    self.logger.debug("Querying model for action.")
+    # Choosing the action with the highest Q-value if its not in valid_actions
+    # Get indices of valid actions
+    valid_indices = [ACTIONS.index(action) for action in valid_actions]
+    #print("Valid indices",valid_indices)
+    valid_q_values = self.model.out[0][valid_indices]
+    # Filter self.model.out to only consider valid actions
+   
+
+    # Select the valid action with the highest Q-value
+    # Not shure if this is the right way
+    best_valid_action_idx = torch.argmax(valid_q_values).item()
+    return ACTIONS[valid_indices[best_valid_action_idx]]
 
 
 def state_to_features(game_state: dict) -> np.array:

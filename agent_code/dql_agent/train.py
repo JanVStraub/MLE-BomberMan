@@ -16,10 +16,10 @@ Transition = namedtuple('Transition',
 
 # Hyper parameters -- DO modify
 TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
-GAMMA = 0.9
+GAMMA = 0.2
 UPDATE_FREQ = 3
 TARGET_UPDATE_FREQ = 10
-LR = 0.02
+LR = 0.01
 LR_GAMMA = 0.999
 
 # Events
@@ -78,8 +78,12 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.optimizer.zero_grad()
 
     q_loss = torch.tensor([0.])
+    self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
     y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
+    self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
+    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2\
+        - 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
+    self.logger.debug(f"q-Loss = {q_loss}")
 
     # accumulate loss
     q_loss.backward()
@@ -158,9 +162,9 @@ def reward_from_events(self, events: List[str]) -> int:
         e.BOMB_DROPPED: 0.1,
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
-        e.INVALID_ACTION: -0.5,
+        #e.INVALID_ACTION: -0.05,
         e.CLOSER_TO_COIN_EVENT: 0.1,
-        e.FURTHER_FROM_COIN_EVENT: -0.1,
+        #e.FURTHER_FROM_COIN_EVENT: -0.1,
     }
     reward_sum = 0
     for event in events:
