@@ -2,7 +2,8 @@ from collections import namedtuple, deque
 
 import pickle
 from typing import List
-
+import random
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import copy
@@ -15,11 +16,12 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
-GAMMA = 0.2
-UPDATE_FREQ = 3
-TARGET_UPDATE_FREQ = 5
-LR = 0.01
+TRANSITION_HISTORY_SIZE = 20  # keep only ... last transitions
+GAMMA = 0.999
+BATCH_SIZE = 5
+UPDATE_FREQ = 5
+TARGET_UPDATE_FREQ = 15
+LR = 0.08
 LR_GAMMA = 0.999
 
 # Events
@@ -71,28 +73,30 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     else:
         events.append(e.FURTHER_FROM_COIN_EVENT)
 
-    # state_to_features is defined in callbacks.py
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
+    #print("Transition buffer", self.transitions, type(self.transitions))
+    if new_game_state['step'] % UPDATE_FREQ == 0 and new_game_state['step'] > TRANSITION_HISTORY_SIZE:
+        self.optimizer.zero_grad()
+        #self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
+        
+        q_loss = torch.tensor([0.])
+        batch = random.sample(list(self.transitions), BATCH_SIZE)
+        #print("Batch", batch)
+        for transition in batch:
+            #print("Transition", self.model(transition[0])[0][0])
+            y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
+            #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
+            q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+        self.logger.debug(f"q-Loss = {q_loss}")
 
-    # if new_game_state['step'] % UPDATE_FREQ == 0:
-    self.optimizer.zero_grad()
+        # accumulate loss
+        q_loss.backward()
+        self.forward_backward_toggle = False
 
-    q_loss = torch.tensor([0.])
-    self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
-    y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
-    self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-    q_loss = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2#\
-        #- 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
-    self.logger.debug(f"q-Loss = {q_loss}")
-
-    # accumulate loss
-    q_loss.backward()
-    self.forward_backward_toggle = False
-
-    # update Q every something steps
-    # if new_game_state['step'] % UPDATE_FREQ == 0:
-    self.optimizer.step()
-    self.scheduler.step()
+        # update Q every something steps
+        # if new_game_state['step'] % UPDATE_FREQ == 0:
+        self.optimizer.step()
+        self.scheduler.step()
 
     # every C-steps: update Q^
     if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:
@@ -117,30 +121,37 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
-    self.scores.append(last_game_state["self"][1])
+    #self.scores.append(last_game_state["self"][1])
 
-    if not e.SURVIVED_ROUND in events:
+    #if not e.SURVIVED_ROUND in events:
 
-        self.optimizer.zero_grad()
+    self.optimizer.zero_grad()
+    batch = random.sample(list(self.transitions), BATCH_SIZE)
 
-        q_loss = torch.tensor([0.])
-        y_j = self.transitions[-1][3]
-        q_loss = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
+    q_loss = torch.tensor([0.])
+    for transition in batch:
+        y_j = transition[3]
+        #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
+        q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+    
+    # calculate loss
+    """if self.forward_backward_toggle == False:
+        print("-------------------forward backward toggle violation!----------------")
+    else:"""
+    q_loss.backward()
 
-        # calculate loss
-        if self.forward_backward_toggle == False:
-            print("-------------------forward backward toggle violation!----------------")
-        else:
-            q_loss.backward()
+    self.optimizer.step()
+    self.scheduler.step()
 
-            self.optimizer.step()
-            self.scheduler.step()
+    # every C-steps: update Q^
+    if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
+        self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
+        self.target_model.train = False
 
-            # every C-steps: update Q^
-            if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
-                self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
-                self.target_model.train = False
-
+    _, score, _, _ = last_game_state["self"]
+    self.scores.append(score)
+    plot_scores(self.scores)
+    #print(last_game_state["self"][1])
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
@@ -155,7 +166,11 @@ def reward_from_events(self, events: List[str]) -> int:
     """
     game_rewards = {
         e.WAITED: -0.1,
-        e.COIN_COLLECTED: 1,
+        e.MOVED_DOWN: -.05,
+        e.MOVED_LEFT: -.05,
+        e.MOVED_RIGHT: -.05,
+        e.MOVED_UP: -.05,
+        e.COIN_COLLECTED: 5,
         e.COIN_FOUND: 0.4,
         e.GOT_KILLED: -15,
         e.KILLED_SELF: -15,
@@ -163,7 +178,7 @@ def reward_from_events(self, events: List[str]) -> int:
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
         #e.INVALID_ACTION: -0.05,
-        e.CLOSER_TO_COIN_EVENT: 0.1,
+        #e.CLOSER_TO_COIN_EVENT: 0.1,
         #e.FURTHER_FROM_COIN_EVENT: -0.1,
     }
     reward_sum = 0
@@ -192,3 +207,9 @@ def is_closer_to_coin(old_game_state, new_game_state):
         return True
 
     return new_distance < old_distance
+
+def plot_scores(scores):
+    plt.figure()
+    plt.plot(np.arange(len(scores)), scores)
+    plt.savefig("scores.pdf", format="pdf")
+    plt.close()

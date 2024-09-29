@@ -17,23 +17,26 @@ class DQL_Model(torch.nn.Module):
     def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.3):
         super().__init__()
         # input size: 1x4x17x17
+        # new input size 1x4x9x9
         self.conv_1 = torch.nn.Conv2d(
             in_channels=3, out_channels=128, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
         # output size: 1x256x13x13
+        # new outpus size: 1x128x5x5
 
         self.conv_2 = torch.nn.Conv2d(
             in_channels=128, out_channels=32, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
         # output size: 1x64x11x11
-        self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
+        # new output size: 1x32x3x3
+        #self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
         # output size: 1x64x6x6
 
         self.flat = torch.nn.Flatten()
         # output size: 1152
-
-        self.lin = torch.nn.Linear(1152, n_outputs)
+        # new outpus size: 288
+        self.lin = torch.nn.Linear(288, n_outputs)
 
         self.out = None
 
@@ -51,7 +54,7 @@ class DQL_Model(torch.nn.Module):
         output = self.drop_1(output)
 
         output = self.act_2(self.conv_2(output))
-        output = self.maxPool(output)
+        #output = self.maxPool(output)
 
         output = self.lin(self.flat(output))
         self.out = output
@@ -76,10 +79,13 @@ def setup(self):
     self.forward_backward_toggle = False
     self.current_round = 0
     self.scores = []
+    self.max_epsilon = 1.0           
+    self.min_epsilon = 0.05           
+    self.decay_rate = 5e-4
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
-        torch.manual_seed(42)
+        #torch.manual_seed(42)
         self.model = DQL_Model()
     else:
         self.logger.info("Loading model from saved state.")
@@ -120,8 +126,9 @@ def act(self, game_state: dict) -> str:
     # if (x, y) in valid_tiles: valid_actions.append('WAIT')
     # valid_actions.append('BOMB') # maybe edit when training with bombs
 
-
-    epsilon = .95 * .99 ** game_state["round"]
+    epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay_rate*game_state["round"])
+    
+    #epsilon = .95 * .99 ** game_state["round"]
     if self.train and random.random() < epsilon:
         self.logger.debug("Choosing action purely at random.")
         random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
@@ -164,14 +171,17 @@ def state_to_features(game_state: dict) -> np.array:
     channels.append(game_state["field"])
     explosion_map = game_state["explosion_map"]
 
+    arena_size_x = len(game_state["field"][0])
+    arena_size_y = len(game_state["field"][1])
+
     # create coin map
-    coin_map = np.zeros((17,17))
+    coin_map = np.zeros((arena_size_x,arena_size_y))
     for (x,y) in game_state["coins"]:
         coin_map[x,y] = 1.
     channels.append(coin_map)
 
     # create players map (positive value: self, negative: other players)
-    players_map = np.zeros((17,17))
+    players_map = np.zeros((arena_size_x,arena_size_y))
     _, s, b, (x,y) = game_state["self"]
     players_map[x,y] = s + 1
     explosion_map[x,y] = -(int)(b)

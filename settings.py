@@ -5,13 +5,13 @@ from fallbacks import pygame
 
 # Game properties
 # board size (a smaller board may be useful at the beginning)
-COLS = 17
-ROWS = 17
+COLS = 9
+ROWS = 9
 SCENARIOS = {
     # modes useful for agent development
-	"empty": {
+	"coin-test": {
         "CRATE_DENSITY": 0, 
-        "COIN_COUNT": 0 
+        "COIN_COUNT": 5 
     },
     "coin-heaven": {
         "CRATE_DENSITY": 0,
