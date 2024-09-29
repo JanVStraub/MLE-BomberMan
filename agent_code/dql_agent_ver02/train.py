@@ -67,7 +67,9 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     :param events: The events that occurred when going from  `old_game_state` to `new_game_state`
     """
     #self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
-
+    #game event after each 50 rounds the agent revieves a penalty
+    if new_game_state['round'] % 10:
+        events.append(e.TOO_LONG_EVENT)
     # Idea: Add your own events to hand out rewards
     if is_closer_to_coin(old_game_state, new_game_state):
         events.append(e.CLOSER_TO_COIN_EVENT)
@@ -78,7 +80,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     #print("Transition buffer", self.transitions, type(self.transitions))
     if new_game_state['step'] % UPDATE_FREQ == 0 and new_game_state['step'] > TRANSITION_HISTORY_SIZE:
         self.optimizer.zero_grad()
-        #self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
+        self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
         
         q_loss = torch.tensor([0.])
         batch = random.sample(list(self.transitions), BATCH_SIZE)
@@ -182,6 +184,7 @@ def reward_from_events(self, events: List[str]) -> int:
         #e.INVALID_ACTION: -0.05,
         e.CLOSER_TO_COIN_EVENT: 0.1,
         e.FURTHER_FROM_COIN_EVENT: -0.1,
+        e.TOO_LONG_EVENT: -1
     }
     reward_sum = 0
     for event in events:

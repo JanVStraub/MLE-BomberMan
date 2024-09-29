@@ -16,31 +16,23 @@ class DQL_Model(torch.nn.Module):
 
     def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.15):
         super().__init__()
-        # input size: 1x4x17x17
         # new input size 1x4x9x9
         self.conv_1 = torch.nn.Conv2d(
             in_channels=3, out_channels=128, kernel_size=3)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
-        # output size: 1x256x13x13
         # new outpus size: 1x128x7x7
 
         self.conv_2 = torch.nn.Conv2d(
             in_channels=128, out_channels=32, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
-        # output size: 1x64x11x11
         # new output size: 1x32x5x5
-        #self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
-        # output size: 1x64x6x6
 
         self.flat = torch.nn.Flatten()
-        # output size: 1152
         # new outpus size: 800
         self.lin = torch.nn.Linear(800, n_outputs)
 
         self.out = None
-        #self.loss = torch.nn.MSELoss()
-        #self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print("Cuda is available:", torch.cuda.is_available())
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
@@ -130,22 +122,13 @@ def act(self, game_state: dict) -> str:
 
     epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay_rate*game_state["round"])
     
-    #epsilon = .95 * .99 ** game_state["round"]
     if self.train and random.random() < epsilon:
-        #self.logger.debug("Choosing action purely at random.")
-        random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
+        random_choice = np.random.choice(valid_actions)
         return random_choice
-    #self.logger.debug("Querying model for action.")
-    # Choosing the action with the highest Q-value if its not in valid_actions
-    # Get indices of valid actions
-    valid_indices = [ACTIONS.index(action) for action in valid_actions]
-    #print("Valid indices",valid_indices)
-    valid_q_values = self.model.out[0][valid_indices]
-    # Filter self.model.out to only consider valid actions
-   
 
-    # Select the valid action with the highest Q-value
-    # Not shure if this is the right way
+    valid_indices = [ACTIONS.index(action) for action in valid_actions]
+    valid_q_values = self.model.out[0][valid_indices]
+   
     best_valid_action_idx = torch.argmax(valid_q_values).item()
     return ACTIONS[valid_indices[best_valid_action_idx]]
 
