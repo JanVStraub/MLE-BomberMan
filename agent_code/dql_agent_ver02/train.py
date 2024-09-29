@@ -39,6 +39,7 @@ def setup_training(self):
     # Example: Setup an array that will note transition tuples
     # (s, a, r, s')
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
+    self.transitions.clear()
     self.model.train = True
     self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LR)
     self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=LR_GAMMA)
@@ -77,8 +78,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(e.FURTHER_FROM_COIN_EVENT)
 
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
-    #print("Transition buffer", self.transitions, type(self.transitions))
-    if new_game_state['step'] % UPDATE_FREQ == 0 and new_game_state['step'] > TRANSITION_HISTORY_SIZE:
+
+    if new_game_state['step'] % UPDATE_FREQ == 0 and len(self.transitions) > BATCH_SIZE:
         self.optimizer.zero_grad()
         self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
         
@@ -86,8 +87,11 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         batch = random.sample(list(self.transitions), BATCH_SIZE)
         #print("Batch", batch)
         for transition in batch:
-            #print("Transition", self.model(transition[0])[0][0])
-            y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
+            if transition[2] is not None:
+                y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
+            else:
+                y_j = transition[3]            
+            #y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
             #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
             q_loss = q_loss + (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
 
@@ -170,11 +174,11 @@ def reward_from_events(self, events: List[str]) -> int:
     """
     game_rewards = {
         e.WAITED: -0.1,
-        e.MOVED_DOWN: -.01,
-        e.MOVED_LEFT: -.01,
-        e.MOVED_RIGHT: -.01,
-        e.MOVED_UP: -.01,
-        e.COIN_COLLECTED: 5,
+        #e.MOVED_DOWN: -.01,
+        #e.MOVED_LEFT: -.01,
+        #e.MOVED_RIGHT: -.01,
+        #e.MOVED_UP: -.01,
+        e.COIN_COLLECTED: 20,
         e.COIN_FOUND: 0.4,
         e.GOT_KILLED: -15,
         e.KILLED_SELF: -15,
