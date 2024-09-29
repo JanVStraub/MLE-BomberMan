@@ -86,11 +86,11 @@ def setup(self):
     self.decay_rate = 1e-4
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
-        self.logger.info("Setting up model from scratch.")
+        #self.logger.info("Setting up model from scratch.")
         #torch.manual_seed(42)
         self.model = DQL_Model()
     else:
-        self.logger.info("Loading model from saved state.")
+        #self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
             self.model = pickle.load(file)
     self.model.to(self.DEVICE)
@@ -132,10 +132,10 @@ def act(self, game_state: dict) -> str:
     
     #epsilon = .95 * .99 ** game_state["round"]
     if self.train and random.random() < epsilon:
-        self.logger.debug("Choosing action purely at random.")
+        #self.logger.debug("Choosing action purely at random.")
         random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
         return random_choice
-    self.logger.debug("Querying model for action.")
+    #self.logger.debug("Querying model for action.")
     # Choosing the action with the highest Q-value if its not in valid_actions
     # Get indices of valid actions
     valid_indices = [ACTIONS.index(action) for action in valid_actions]
