@@ -39,7 +39,7 @@ class DQL_Model(torch.nn.Module):
         self.lin = torch.nn.Linear(800, n_outputs)
 
         self.out = None
-        
+        #self.loss = torch.nn.MSELoss()
         #self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print("Cuda is available:", torch.cuda.is_available())
         # initialize weights

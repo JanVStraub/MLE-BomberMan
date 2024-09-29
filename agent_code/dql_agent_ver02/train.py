@@ -17,7 +17,7 @@ Transition = namedtuple('Transition',
 
 # Hyper parameters -- DO modify
 TRANSITION_HISTORY_SIZE = 300  # keep only ... last transitions
-GAMMA = 0.999
+GAMMA = 0.9
 BATCH_SIZE = 32
 UPDATE_FREQ = 10
 TARGET_UPDATE_FREQ = 100
@@ -87,7 +87,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             #print("Transition", self.model(transition[0])[0][0])
             y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
             #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-            q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+            q_loss = q_loss + (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+
         self.logger.debug(f"q-Loss = {q_loss}")
 
         # accumulate loss
@@ -133,7 +134,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     for transition in batch:
         y_j = transition[3]
         #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-        q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+        q_loss = q_loss + (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
     
     # calculate loss
     """if self.forward_backward_toggle == False:
@@ -167,10 +168,10 @@ def reward_from_events(self, events: List[str]) -> int:
     """
     game_rewards = {
         e.WAITED: -0.1,
-        e.MOVED_DOWN: -.05,
-        e.MOVED_LEFT: -.05,
-        e.MOVED_RIGHT: -.05,
-        e.MOVED_UP: -.05,
+        e.MOVED_DOWN: -.01,
+        e.MOVED_LEFT: -.01,
+        e.MOVED_RIGHT: -.01,
+        e.MOVED_UP: -.01,
         e.COIN_COLLECTED: 5,
         e.COIN_FOUND: 0.4,
         e.GOT_KILLED: -15,
@@ -179,8 +180,8 @@ def reward_from_events(self, events: List[str]) -> int:
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
         #e.INVALID_ACTION: -0.05,
-        #e.CLOSER_TO_COIN_EVENT: 0.1,
-        #e.FURTHER_FROM_COIN_EVENT: -0.1,
+        e.CLOSER_TO_COIN_EVENT: 0.1,
+        e.FURTHER_FROM_COIN_EVENT: -0.1,
     }
     reward_sum = 0
     for event in events:
