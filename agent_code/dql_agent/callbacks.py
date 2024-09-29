@@ -7,40 +7,41 @@ import numpy as np
 import torch
 
 
-ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']# , 'WAIT', 'BOMB']
+ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
-DEVICE = 'cpu'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+SEED = 42
 
 
 class DQL_Model(torch.nn.Module):
 
-    def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.3):
+    def __init__(self, dropout: float = 0.3):
         super().__init__()
-        # input size: 1x4x17x17
+        # input size: 1x4x11x11
         self.conv_1 = torch.nn.Conv2d(
             in_channels=3, out_channels=256, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
-        # output size: 1x256x13x13
+        # output size: 1x256x7x7
 
         self.conv_2 = torch.nn.Conv2d(
             in_channels=256, out_channels=64, kernel_size=3)
+        # output size: 1x64x7x7
+
         self.act_2 = torch.nn.ReLU()
-        # output size: 1x64x11x11
         self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
-        # output size: 1x64x6x6
+        # output size: 1x64x4x4
 
         self.flat = torch.nn.Flatten()
-        # output size: 2304
+        # output size: 1024
 
-        self.lin = torch.nn.Linear(2304, n_outputs)
+        self.lin = torch.nn.Linear(1024, len(ACTIONS))
 
         self.out = None
 
-
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
-        # print("CONV 1 SIZE:", self.conv_1.weight.data.size(), "---------------------")
         torch.nn.init.xavier_uniform_(self.conv_2.weight)
         torch.nn.init.xavier_uniform_(self.lin.weight)
 
@@ -73,13 +74,11 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-    self.forward_backward_toggle = False
-    self.current_round = 0
     self.scores = []
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
-        torch.manual_seed(42)
+        torch.manual_seed(SEED)
         self.model = DQL_Model()
     else:
         self.logger.info("Loading model from saved state.")
@@ -99,14 +98,13 @@ def act(self, game_state: dict) -> str:
     """
 
     # self.logger.debug("Querying model for action.")
-    self.model.out = self.model(state_to_features(game_state))
+    self.model.out = self.model(state_to_features(game_state).unsqueeze(1))
     self.forward_backward_toggle = True
-    # recommended_action = ACTIONS[np.random.choice(np.flatnonzero(self.model.out == torch.max(self.model.out)))]
     
-    # Gather information about the game state
+    # check for valid moves
     arena = game_state['field']
     _, _, _, (x, y) = game_state['self']
-    # Check which moves make sense at all
+
     directions = [(x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
     valid_tiles, valid_actions = [], []
     for d in directions:
@@ -117,40 +115,28 @@ def act(self, game_state: dict) -> str:
     if (x + 1, y) in valid_tiles: valid_actions.append('RIGHT')
     if (x, y - 1) in valid_tiles: valid_actions.append('UP')
     if (x, y + 1) in valid_tiles: valid_actions.append('DOWN')
-    # if (x, y) in valid_tiles: valid_actions.append('WAIT')
-    # valid_actions.append('BOMB') # maybe edit when training with bombs
+    if (x, y) in valid_tiles: valid_actions.append('WAIT')
+    valid_actions.append('BOMB') # maybe edit when training with bombs
 
-
-    epsilon = 1 * (int)(game_state["round"] < 250) + (1-(int)(game_state["round"] < 250)) * .1 * .99 ** game_state["round"]
+    epsilon = 0.01 + 0.99 * np.exp(-game_state['round']/1000)
     if self.train and random.random() < epsilon:
         self.logger.debug("Choosing action purely at random.")
-        random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
+        random_choice = np.random.choice(valid_actions)
         return random_choice
     self.logger.debug("Querying model for action.")
     # Choosing the action with the highest Q-value if its not in valid_actions
     # Get indices of valid actions
     valid_indices = [ACTIONS.index(action) for action in valid_actions]
-    #print("Valid indices",valid_indices)
     valid_q_values = self.model.out[0][valid_indices]
-    # Filter self.model.out to only consider valid actions
-   
 
     # Select the valid action with the highest Q-value
-    # Not shure if this is the right way
     best_valid_action_idx = torch.argmax(valid_q_values).item()
     return ACTIONS[valid_indices[best_valid_action_idx]]
 
 
-def state_to_features(game_state: dict) -> np.array:
+def state_to_features(game_state: dict) -> torch.tensor:
     """
-    *This is not a required function, but an idea to structure your code.*
-
-    Converts the game state to the input of your model, i.e.
-    a feature vector.
-
-    You can find out about the state of the game environment via game_state,
-    which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
-    what it contains.
+    Converts the game state to the input of the model
 
     :param game_state:  A dictionary describing the current game board.
     :return: np.array
@@ -159,32 +145,35 @@ def state_to_features(game_state: dict) -> np.array:
     if game_state is None:
         return None
 
-    # For example, you could construct several channels of equal shape, ...
+    # view as 11x11 image around the agent - the agent will always be in the middle
+    _, s, b, (x,y) = game_state['self']
+
     channels = []
-    channels.append(game_state["field"])
+    channels.append(np.pad(game_state["field"], pad_width=4)[x-1:x+10, y-1:y+10])
     explosion_map = game_state["explosion_map"]
+    # add negative value at centre (players position) if agent can place bomb
+    explosion_map[x,y] = -(int)(b)
 
     # create coin map
     coin_map = np.zeros((17,17))
     for (x,y) in game_state["coins"]:
         coin_map[x,y] = 1.
-    channels.append(coin_map)
+    channels.append(np.pad(coin_map,pad_width=4)[x-1:x+10, y-1:y+10])
 
     # create players map (positive value: self, negative: other players)
     players_map = np.zeros((17,17))
-    _, s, b, (x,y) = game_state["self"]
     players_map[x,y] = s + 1
-    explosion_map[x,y] = -(int)(b)
 
     for player in game_state["others"]:
-        _, s, b, (x,y) = player
-        players_map[x,y] = -s - 1
-        explosion_map[x,y] = -(int)(b)
+        _, s_o, b_0, (x_o,y_o) = player
+        players_map[x_o,y_o] = -s_o - 1
+        # value -1 if player at that position can drop bomb
+        explosion_map[x_o,y_o] = -(int)(b_o)
     
-    #channels.append(explosion_map)
-    channels.append(players_map)
+    explosion_map = np.pad(explosion_map, pad_width=4)[x-1:x+10, y-1:y+10]
+    channels.append(explosion_map)
+    channels.append(np.pad(players_map, pad_width=4)[x-1:x+10, y-1:y+10])
 
-    # concatenate them as a feature tensor (they must have the same shape), ...
-    stacked_channels = np.array(np.stack(channels))
-    # and return them as a vector
-    return torch.tensor(np.array([stacked_channels])).to(DEVICE, dtype=torch.float32)
+    stacked_channels = torch.tensor(np.array(np.stack(channels))).to(DEVICE, dtype=torch.float32)
+    # shape: 4x11x11
+    return stacked_channels

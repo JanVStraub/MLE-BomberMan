@@ -5,23 +5,24 @@ from typing import List
 
 import torch
 import numpy as np
+import random
 import copy
 import matplotlib.pyplot as plt
 
 import events as e
-from .callbacks import state_to_features, DQL_Model, ACTIONS
+from .callbacks import state_to_features, DQL_Model, ACTIONS, DEVICE
 
 # This is only an example!
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 1  # keep only ... last transitions
-GAMMA = 0.2
-UPDATE_FREQ = 3
-TARGET_UPDATE_FREQ = 10
-LR = 0.01
+MEMORY_SIZE = 50000 # keep only ... last transitions
+MEMORY_COUNTER = 0 # keep track of filled up space
+GAMMA = 0.99
+LR = 0.003
 LR_GAMMA = 0.999
+BATCH_SIZE = 100
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
@@ -35,10 +36,18 @@ def setup_training(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-    # Example: Setup an array that will note transition tuples
-    # (s, a, r, s')
-    self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
+    # loss functions
+    self.loss_func = torch.nn.MSELoss()
+
+    self.state_memory = np.zeros((MEMORY_SIZE, 4, 11, 11), dtype=np.float32)
+    self.new_state_memory = np.zeros((MEMORY_SIZE, 4, 11, 11), dtype=np.float32)
+    self.action_memory = np.zeros((MEMORY_SIZE), dtype=int) # we work with the indices of the actions
+    self.reward_memory = np.zeros((MEMORY_SIZE), dtype=np.float32)
+    self.terminal_state_memory = np.ones((MEMORY_SIZE), dtype=np.bool)
+
     self.model.train = True
+
+    # set up optimizer and schduler
     self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LR)
     self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=LR_GAMMA)
 
@@ -64,43 +73,50 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     :param new_game_state: The state the agent is in now.
     :param events: The events that occurred when going from  `old_game_state` to `new_game_state`
     """
-    self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
-    # Idea: Add your own events to hand out rewards
+    # add custom events
     if is_closer_to_coin(old_game_state, new_game_state):
         events.append(e.CLOSER_TO_COIN_EVENT)
     else:
         events.append(e.FURTHER_FROM_COIN_EVENT)
+        self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
-    # state_to_features is defined in callbacks.py
-    self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
+    # add entry to memories    
+    index = MEMORY_COUNTER % MEMORY_SIZE
+    self.state_memory[index] = state_to_features(old_game_state)
+    self.new_state_memory[index] = state_to_features(new_game_state)
+    self.action_memory[index] = ACTIONS.index(self_action)
+    self.reward_memory[index] = reward_from_events(self, events)
+    self.terminal_state_memory[index] = True
+    # increase memory counter
+    MEMORY_COUNTER += 1
 
-    # if new_game_state['step'] % UPDATE_FREQ == 0:
+    # train model with a batch of samples from the memory
+    # set gradient to zero
     self.optimizer.zero_grad()
+    # sample indices
+    sample_size = min(MEMORY_COUNTER, MEMORY_SIZE)
+    batch_size = min(MEMORY_COUNTER, BATCH_SIZE)
+    indices = np.random.coice(sample_size, batch_size, replace=False)
 
-    q_loss = torch.tensor([0.])
-    self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
-    y_j = self.transitions[-1][3] + GAMMA * torch.max(self.target_model(self.transitions[-1][2]))
-    self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
+    states_batch = torch.tensor(self.state_momory[indices]).to(DEVICE)
+    new_states_batch = torch.tensor(self.new_state_memory[indices]).to(DEVICE)
+    actions_batch = torch.tensor(self.action_memory[indices]).to(DEVICE)
+    reward_batch = torch.tensor(self.reward_memory[indices]).to(DEVICE)
+    terminal_state_batch = torch.tensor(self.terminal_state_memory[indices]).to(DEVICE)
 
-    q_loss_1 = (y_j - self.model.out[0][ACTIONS.index(self_action)])**2
-    q_loss_2 = - 60 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(self_action)])**2
-    q_loss = q_loss_1# + q_loss_2
-    self.logger.debug(f"q-Loss = {q_loss_1} + {q_loss_2} = {q_loss}")
+    # compute outputs
+    outputs = self.model(states_batch)[:, actions_batch]
 
-    # accumulate loss
+    target_outputs = reward_batch + (int)(terminal_state_batch)* \
+        GAMMA * torch.max(self.target_model(new_states_batch), dim=1)
+    q_loss = self.loss_func(target_outputs, outputs).to(DEVICE)
+    self.logger.debug(f"q-Loss = {q_loss}")
+
+    # perform backward path
     q_loss.backward()
-    self.forward_backward_toggle = False
-
-    # update Q every something steps
-    # if new_game_state['step'] % UPDATE_FREQ == 0:
     self.optimizer.step()
     self.scheduler.step()
-
-    # every C-steps: update Q^
-    if new_game_state['step'] % TARGET_UPDATE_FREQ == 0:
-        self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
-        self.target_model.train = False
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -118,36 +134,48 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     """
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
 
-    self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
+    # add entry to memories    
+    index = MEMORY_COUNTER % MEMORY_SIZE
+    self.state_memory[index] = state_to_features(old_game_state)
+    self.action_memory[index] = ACTIONS.index(last_action)
+    self.reward_memory[index] = reward_from_events(self, events)
+    self.terminal_state_memory[index] = False
+    # increase memory counter
+    MEMORY_COUNTER += 1
 
     _, score, _, _ = last_game_state["self"]
     self.scores.append(score)
 
-    if not e.SURVIVED_ROUND in events:
+    # train model with a batch of samples from the memory
+    # set gradient to zero
+    self.optimizer.zero_grad()
+    # sample indices
+    sample_size = min(MEMORY_COUNTER, MEMORY_SIZE)
+    batch_size = min(MEMORY_COUNTER, BATCH_SIZE)
+    indices = np.random.coice(sample_size, batch_size, replace=False)
 
-        self.optimizer.zero_grad()
+    states_batch = torch.tensor(self.state_momory[indices]).to(DEVICE)
+    new_states_batch = torch.tensor(self.new_state_memory[indices]).to(DEVICE)
+    actions_batch = torch.tensor(self.action_memory[indices]).to(DEVICE)
+    reward_batch = torch.tensor(self.rewar_memory[indices]).to(DEVICE)
+    terminal_state_batch = torch.tensor(self.terminal_state_memory[indices]).to(DEVICE)
 
-        q_loss = torch.tensor([0.])
-        y_j = self.transitions[-1][3]
+    # compute outputs
+    outputs = self.model(states_batch)[:, actions_batch]
 
-        q_loss_1 = (y_j - self.model.out[0][ACTIONS.index(last_action)])**2
-        q_loss_2 = - 0.5 * self.transitions[-1][3] * (self.model.out[0][ACTIONS.index(last_action)])**2
-        q_loss = q_loss_1# + q_loss_2
-        self.logger.debug(f"q-Loss = {q_loss_1} + {q_loss_2} = {q_loss}")
+    target_outputs = reward_batch + (int)(terminal_state_batch)* \
+        GAMMA * torch.max(self.target_model(new_states_batch), dim=1)
+    q_loss = self.loss_func(target_outputs, outputs).to(DEVICE)
+    self.logger.debug(f"q-Loss = {q_loss}")
 
-        # calculate loss
-        if self.forward_backward_toggle == False:
-            print("-------------------forward backward toggle violation!----------------")
-        else:
-            q_loss.backward()
+    # perform backward path
+    q_loss.backward()
+    self.optimizer.step()
+    self.scheduler.step()
 
-            self.optimizer.step()
-            self.scheduler.step()
-
-            # every C-steps: update Q^
-            if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
-                self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
-                self.target_model.train = False
+    # update target model
+    self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
+    self.target_model.train = False
 
     plot_scores(self.scores)
 
@@ -158,7 +186,11 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
 def plot_scores(scores):
     plt.figure()
-    plt.plot(np.arange(len(scores)), scores)
+    plt.title("scores while training")
+    plt.plot(np.arange(1, len(scores)+1), scores, color="deepskyblue")
+    plt.grid()
+    plt.xlabel("round")
+    plt.ylabel("score")
     plt.savefig("scores.pdf", format="pdf")
     plt.close()
 
@@ -180,7 +212,7 @@ def reward_from_events(self, events: List[str]) -> int:
         e.CRATE_DESTROYED: 0.1,
         e.INVALID_ACTION: -0.05,
         e.CLOSER_TO_COIN_EVENT: 0.1,
-        e.FURTHER_FROM_COIN_EVENT: -0.15,
+        e.FURTHER_FROM_COIN_EVENT: -0.12,
     }
     reward_sum = 0
     for event in events:
