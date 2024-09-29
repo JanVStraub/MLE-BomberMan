@@ -16,13 +16,13 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 # Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 20  # keep only ... last transitions
+TRANSITION_HISTORY_SIZE = 300  # keep only ... last transitions
 GAMMA = 0.999
-BATCH_SIZE = 10
+BATCH_SIZE = 32
 UPDATE_FREQ = 10
-TARGET_UPDATE_FREQ = 30
-LR = 0.08
-LR_GAMMA = 0.999
+TARGET_UPDATE_FREQ = 100
+LR = 0.0005
+LR_GAMMA = 0.99
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"

@@ -14,29 +14,29 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']# , 'WAIT', 'BOMB']
 
 class DQL_Model(torch.nn.Module):
 
-    def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.3):
+    def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.15):
         super().__init__()
         # input size: 1x4x17x17
         # new input size 1x4x9x9
         self.conv_1 = torch.nn.Conv2d(
-            in_channels=3, out_channels=128, kernel_size=5)
+            in_channels=3, out_channels=128, kernel_size=3)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
         # output size: 1x256x13x13
-        # new outpus size: 1x128x5x5
+        # new outpus size: 1x128x7x7
 
         self.conv_2 = torch.nn.Conv2d(
             in_channels=128, out_channels=32, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
         # output size: 1x64x11x11
-        # new output size: 1x32x3x3
+        # new output size: 1x32x5x5
         #self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
         # output size: 1x64x6x6
 
         self.flat = torch.nn.Flatten()
         # output size: 1152
-        # new outpus size: 288
-        self.lin = torch.nn.Linear(288, n_outputs)
+        # new outpus size: 800
+        self.lin = torch.nn.Linear(800, n_outputs)
 
         self.out = None
         
@@ -82,8 +82,8 @@ def setup(self):
     self.current_round = 0
     self.scores = []
     self.max_epsilon = 1.0           
-    self.min_epsilon = 0.05           
-    self.decay_rate = 5e-4
+    self.min_epsilon = 0.01           
+    self.decay_rate = 1e-4
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
