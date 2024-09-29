@@ -40,7 +40,8 @@ class DQL_Model(torch.nn.Module):
 
         self.out = None
 
-
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        print("Cuda is available:", torch.cuda.is_available())
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
         # print("CONV 1 SIZE:", self.conv_1.weight.data.size(), "---------------------")
@@ -91,7 +92,7 @@ def setup(self):
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
             self.model = pickle.load(file)
-    self.model.to(DEVICE)
+    self.model.to(self.device)
 
 
 def act(self, game_state: dict) -> str:
