@@ -157,8 +157,9 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         self.target_model.train = False
 
     _, score, _, _ = last_game_state["self"]
+    round = last_game_state["round"]
     self.scores.append(score)
-    plot_scores(self.scores)
+    plot_scores(self.scores, round)
     #print(last_game_state["self"][1])
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
@@ -217,8 +218,10 @@ def is_closer_to_coin(old_game_state, new_game_state):
 
     return new_distance < old_distance
 
-def plot_scores(scores):
+def plot_scores(scores, round):
     plt.figure()
     plt.plot(np.arange(len(scores)), scores)
+    plt.plot(np.arange(len(scores)), round)
+
     plt.savefig("scores.pdf", format="pdf")
     plt.close()
