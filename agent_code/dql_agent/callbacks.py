@@ -9,7 +9,7 @@ import torch
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']# , 'WAIT', 'BOMB']
 
-DEVICE = 'cpu'
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 class DQL_Model(torch.nn.Module):
@@ -36,12 +36,10 @@ class DQL_Model(torch.nn.Module):
         self.flat = torch.nn.Flatten()
         # output size: 1152
         # new outpus size: 288
-        self.lin = torch.nn.Linear(288, n_outputs)
+        self.lin = torch.nn.Linear(3872, n_outputs)
 
         self.out = None
 
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        print("Cuda is available:", torch.cuda.is_available())
         # initialize weights
         torch.nn.init.xavier_uniform_(self.conv_1.weight)
         # print("CONV 1 SIZE:", self.conv_1.weight.data.size(), "---------------------")
@@ -83,6 +81,8 @@ def setup(self):
     self.max_epsilon = 1.0           
     self.min_epsilon = 0.05           
     self.decay_rate = 5e-4
+
+    self.device = DEVICE
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
@@ -132,10 +132,14 @@ def act(self, game_state: dict) -> str:
     #epsilon = .95 * .99 ** game_state["round"]
     if self.train and random.random() < epsilon:
         self.logger.debug("Choosing action purely at random.")
+        if len(valid_actions) == 0:
+            return np.random.choice(ACTIONS)
         random_choice = np.random.choice(valid_actions)#, p=[.2, .2, .2, .2, .1, .1]) #Choose random valid action
         return random_choice
     self.logger.debug("Querying model for action.")
     # Choosing the action with the highest Q-value if its not in valid_actions
+    if len(valid_actions) == 0:
+        return np.random.choice(ACTIONS)
     # Get indices of valid actions
     valid_indices = [ACTIONS.index(action) for action in valid_actions]
     #print("Valid indices",valid_indices)
