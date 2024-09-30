@@ -69,8 +69,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     """
     #self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
     #game event after each 50 rounds the agent revieves a penalty
-    if new_game_state['round'] % 10:
-        events.append(e.TOO_LONG_EVENT)
+    #if new_game_state['round'] % 10:
+    #    events.append(e.TOO_LONG_EVENT)
     # Idea: Add your own events to hand out rewards
     if is_closer_to_coin(old_game_state, new_game_state):
         events.append(e.CLOSER_TO_COIN_EVENT)
@@ -185,17 +185,17 @@ def reward_from_events(self, events: List[str]) -> int:
         #e.MOVED_LEFT: -.01,
         #e.MOVED_RIGHT: -.01,
         #e.MOVED_UP: -.01,
-        e.COIN_COLLECTED: 20,
+        e.COIN_COLLECTED: 15,
         e.COIN_FOUND: 0.4,
-        e.GOT_KILLED: -15,
-        e.KILLED_SELF: -15,
+        e.GOT_KILLED: -20,
+        e.KILLED_SELF: -20,
         e.BOMB_DROPPED: 0.1,
         e.KILLED_OPPONENT: 40,
-        e.CRATE_DESTROYED: 0.1,
+        e.CRATE_DESTROYED: 5,
         #e.INVALID_ACTION: -0.05,
-        e.CLOSER_TO_COIN_EVENT: 5,
+        e.CLOSER_TO_COIN_EVENT: 3,
         e.FURTHER_FROM_COIN_EVENT: -0.1,
-        e.TOO_LONG_EVENT: -5
+        #e.TOO_LONG_EVENT: -1
     }
     reward_sum = 0
     for event in events:
