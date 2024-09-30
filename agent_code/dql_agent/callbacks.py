@@ -19,24 +19,20 @@ class DQL_Model(torch.nn.Module):
     def __init__(self, dropout: float = 0.3):
         super().__init__()
         # input size: 1x4x11x11
-        self.conv_1 = torch.nn.Conv2d(
-            in_channels=3, out_channels=256, kernel_size=5)
+        self.conv_1 = torch.nn.Conv2d(in_channels=4, out_channels=256, kernel_size=5)
         self.act_1 = torch.nn.ReLU()
         self.drop_1 = torch.nn.Dropout(dropout)
         # output size: 1x256x7x7
 
         self.conv_2 = torch.nn.Conv2d(
-            in_channels=256, out_channels=64, kernel_size=3)
-        # output size: 1x64x7x7
+            in_channels=256, out_channels=32, kernel_size=3)
+        # output size: 1x32x5x5
 
         self.act_2 = torch.nn.ReLU()
-        self.maxPool = torch.nn.MaxPool2d(kernel_size=2, ceil_mode=True)
-        # output size: 1x64x4x4
-
         self.flat = torch.nn.Flatten()
-        # output size: 1024
+        # output size: 800
 
-        self.lin = torch.nn.Linear(1024, len(ACTIONS))
+        self.lin = torch.nn.Linear(800, len(ACTIONS))
 
         self.out = None
 
@@ -50,9 +46,11 @@ class DQL_Model(torch.nn.Module):
  
         output = self.act_1(self.conv_1(inputs))
         output = self.drop_1(output)
+        #print(output.size())
 
         output = self.act_2(self.conv_2(output))
-        output = self.maxPool(output)
+        #output = self.maxPool(output)
+        #print(output.size())
 
         output = self.lin(self.flat(output))
         self.out = output
@@ -98,8 +96,9 @@ def act(self, game_state: dict) -> str:
     """
 
     # self.logger.debug("Querying model for action.")
-    self.model.out = self.model(state_to_features(game_state).unsqueeze(1))
-    self.forward_backward_toggle = True
+    self.model.out = self.model(state_to_features(game_state).unsqueeze(0))
+    return ACTIONS[torch.argmax(self.model.out)]
+
     
     # check for valid moves
     arena = game_state['field']
@@ -165,7 +164,7 @@ def state_to_features(game_state: dict) -> torch.tensor:
     players_map[x,y] = s + 1
 
     for player in game_state["others"]:
-        _, s_o, b_0, (x_o,y_o) = player
+        _, s_o, b_o, (x_o,y_o) = player
         players_map[x_o,y_o] = -s_o - 1
         # value -1 if player at that position can drop bomb
         explosion_map[x_o,y_o] = -(int)(b_o)

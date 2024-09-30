@@ -18,14 +18,10 @@ Transition = namedtuple('Transition',
 
 # Hyper parameters -- DO modify
 MEMORY_SIZE = 50000 # keep only ... last transitions
-MEMORY_COUNTER = 0 # keep track of filled up space
 GAMMA = 0.99
 LR = 0.003
 LR_GAMMA = 0.999
 BATCH_SIZE = 100
-
-# Events
-PLACEHOLDER_EVENT = "PLACEHOLDER"
 
 
 def setup_training(self):
@@ -39,11 +35,13 @@ def setup_training(self):
     # loss functions
     self.loss_func = torch.nn.MSELoss()
 
+    self.memory_counter = 0 # keep track of filled up space
+
     self.state_memory = np.zeros((MEMORY_SIZE, 4, 11, 11), dtype=np.float32)
     self.new_state_memory = np.zeros((MEMORY_SIZE, 4, 11, 11), dtype=np.float32)
     self.action_memory = np.zeros((MEMORY_SIZE), dtype=int) # we work with the indices of the actions
     self.reward_memory = np.zeros((MEMORY_SIZE), dtype=np.float32)
-    self.terminal_state_memory = np.ones((MEMORY_SIZE), dtype=np.bool)
+    self.terminal_state_memory = np.ones((MEMORY_SIZE), dtype=bool)
 
     self.model.train = True
 
@@ -80,26 +78,28 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     else:
         events.append(e.FURTHER_FROM_COIN_EVENT)
         self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
+    if player_nearby(new_game_state) and e.BOMB_DROPPED in events:
+        events.append(e.BOMB_SET_NEARBY_PLAYER)
 
     # add entry to memories    
-    index = MEMORY_COUNTER % MEMORY_SIZE
+    index = self.memory_counter % MEMORY_SIZE
     self.state_memory[index] = state_to_features(old_game_state)
     self.new_state_memory[index] = state_to_features(new_game_state)
     self.action_memory[index] = ACTIONS.index(self_action)
     self.reward_memory[index] = reward_from_events(self, events)
     self.terminal_state_memory[index] = True
     # increase memory counter
-    MEMORY_COUNTER += 1
+    self.memory_counter += 1
 
     # train model with a batch of samples from the memory
     # set gradient to zero
     self.optimizer.zero_grad()
     # sample indices
-    sample_size = min(MEMORY_COUNTER, MEMORY_SIZE)
-    batch_size = min(MEMORY_COUNTER, BATCH_SIZE)
-    indices = np.random.coice(sample_size, batch_size, replace=False)
+    sample_size = min(self.memory_counter, MEMORY_SIZE)
+    batch_size = min(self.memory_counter, BATCH_SIZE)
+    indices = np.random.choice(sample_size, batch_size, replace=False)
 
-    states_batch = torch.tensor(self.state_momory[indices]).to(DEVICE)
+    states_batch = torch.tensor(self.state_memory[indices]).to(DEVICE)
     new_states_batch = torch.tensor(self.new_state_memory[indices]).to(DEVICE)
     actions_batch = torch.tensor(self.action_memory[indices]).to(DEVICE)
     reward_batch = torch.tensor(self.reward_memory[indices]).to(DEVICE)
@@ -108,15 +108,13 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # compute outputs
     outputs = self.model(states_batch)[:, actions_batch]
 
-    target_outputs = reward_batch + (int)(terminal_state_batch)* \
-        GAMMA * torch.max(self.target_model(new_states_batch), dim=1)
-    q_loss = self.loss_func(target_outputs, outputs).to(DEVICE)
+    target_outputs = reward_batch + (terminal_state_batch * torch.max(self.target_model(new_states_batch), dim=1)[0]) * GAMMA
+    q_loss = self.loss_func(target_outputs, torch.max(outputs, dim=1)[0]).to(DEVICE)
     self.logger.debug(f"q-Loss = {q_loss}")
 
     # perform backward path
     q_loss.backward()
     self.optimizer.step()
-    self.scheduler.step()
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -135,13 +133,13 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
 
     # add entry to memories    
-    index = MEMORY_COUNTER % MEMORY_SIZE
-    self.state_memory[index] = state_to_features(old_game_state)
+    index = self.memory_counter % MEMORY_SIZE
+    self.state_memory[index] = state_to_features(last_game_state)
     self.action_memory[index] = ACTIONS.index(last_action)
     self.reward_memory[index] = reward_from_events(self, events)
     self.terminal_state_memory[index] = False
     # increase memory counter
-    MEMORY_COUNTER += 1
+    self.memory_counter += 1
 
     _, score, _, _ = last_game_state["self"]
     self.scores.append(score)
@@ -150,22 +148,21 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # set gradient to zero
     self.optimizer.zero_grad()
     # sample indices
-    sample_size = min(MEMORY_COUNTER, MEMORY_SIZE)
-    batch_size = min(MEMORY_COUNTER, BATCH_SIZE)
-    indices = np.random.coice(sample_size, batch_size, replace=False)
+    sample_size = min(self.memory_counter, MEMORY_SIZE)
+    batch_size = min(self.memory_counter, BATCH_SIZE)
+    indices = np.random.choice(sample_size, batch_size, replace=False)
 
-    states_batch = torch.tensor(self.state_momory[indices]).to(DEVICE)
+    states_batch = torch.tensor(self.state_memory[indices]).to(DEVICE)
     new_states_batch = torch.tensor(self.new_state_memory[indices]).to(DEVICE)
     actions_batch = torch.tensor(self.action_memory[indices]).to(DEVICE)
-    reward_batch = torch.tensor(self.rewar_memory[indices]).to(DEVICE)
+    reward_batch = torch.tensor(self.reward_memory[indices]).to(DEVICE)
     terminal_state_batch = torch.tensor(self.terminal_state_memory[indices]).to(DEVICE)
 
     # compute outputs
     outputs = self.model(states_batch)[:, actions_batch]
 
-    target_outputs = reward_batch + (int)(terminal_state_batch)* \
-        GAMMA * torch.max(self.target_model(new_states_batch), dim=1)
-    q_loss = self.loss_func(target_outputs, outputs).to(DEVICE)
+    target_outputs = reward_batch + (terminal_state_batch * torch.max(self.target_model(new_states_batch), dim=1)[0]) * GAMMA
+    q_loss = self.loss_func(target_outputs, torch.max(outputs, dim=1)[0]).to(DEVICE)
     self.logger.debug(f"q-Loss = {q_loss}")
 
     # perform backward path
@@ -182,9 +179,13 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
+    if last_game_state['round'] % 500 == 0:
+        with open(f"my-saved-model-{last_game_state['round']}.pt", "wb") as file:
+            pickle.dump(self.model, file)
 
 
 def plot_scores(scores):
+
     plt.figure()
     plt.title("scores while training")
     plt.plot(np.arange(1, len(scores)+1), scores, color="deepskyblue")
@@ -195,24 +196,20 @@ def plot_scores(scores):
     plt.close()
 
 def reward_from_events(self, events: List[str]) -> int:
-    """
-    *This is not a required function, but an idea to structure your code.*
 
-    Here you can modify the rewards your agent get so as to en/discourage
-    certain behavior.
-    """
     game_rewards = {
-        e.WAITED: -0.1,
+        e.WAITED: -0.05,
         e.COIN_COLLECTED: 1,
         e.COIN_FOUND: 0.4,
-        e.GOT_KILLED: -15,
-        e.KILLED_SELF: -15,
+        e.GOT_KILLED: -4,
+        e.KILLED_SELF: -5,
         e.BOMB_DROPPED: 0.1,
         e.KILLED_OPPONENT: 5,
         e.CRATE_DESTROYED: 0.1,
         e.INVALID_ACTION: -0.05,
         e.CLOSER_TO_COIN_EVENT: 0.1,
         e.FURTHER_FROM_COIN_EVENT: -0.12,
+        e.BOMB_SET_NEARBY_PLAYER: 0.5
     }
     reward_sum = 0
     for event in events:
@@ -240,3 +237,11 @@ def is_closer_to_coin(old_game_state, new_game_state):
         return True
 
     return new_distance < old_distance
+
+def player_nearby(new_game_state):
+    (x,y) = new_game_state["self"][3]
+    for player in new_game_state['others']:
+        (x_o, y_o) = player[3]
+        if (np.abs(x_o - x) + np.abs(y_o - y) <= 6):
+            return True
+    return False
