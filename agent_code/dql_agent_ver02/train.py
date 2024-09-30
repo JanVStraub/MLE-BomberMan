@@ -18,11 +18,11 @@ Transition = namedtuple('Transition',
 # Hyper parameters -- DO modify
 TRANSITION_HISTORY_SIZE = 300  # keep only ... last transitions
 GAMMA = 0.9
-BATCH_SIZE = 32
-UPDATE_FREQ = 10
-TARGET_UPDATE_FREQ = 100
-LR = 0.0005
-LR_GAMMA = 0.99
+BATCH_SIZE = 16
+UPDATE_FREQ = 8
+TARGET_UPDATE_FREQ = 64
+LR = 0.001
+LR_GAMMA = 0.9999 #finally learned at 0.99999
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
@@ -80,29 +80,27 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.transitions.append(Transition(state_to_features(old_game_state), self_action, state_to_features(new_game_state), reward_from_events(self, events)))
 
     if new_game_state['step'] % UPDATE_FREQ == 0 and len(self.transitions) > BATCH_SIZE:
-        self.optimizer.zero_grad()
-        self.logger.debug(f"rewards:  {self.transitions[-1][3]},  Target output:  {GAMMA * torch.max(self.target_model(self.transitions[-1][2]))}")
-        
-        q_loss = torch.tensor([0.])
+        self.optimizer.zero_grad()  # Clear gradients before batch
+    
+        total_loss = 0  # Accumulate loss over the batch
         batch = random.sample(list(self.transitions), BATCH_SIZE)
-        #print("Batch", batch)
+        
         for transition in batch:
             if transition[2] is not None:
                 y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
             else:
-                y_j = transition[3]            
-            #y_j = transition[3] + GAMMA * torch.max(self.target_model(transition[2]))
-            #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-            q_loss = q_loss + (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
-
-        self.logger.debug(f"q-Loss = {q_loss}")
-
-        # accumulate loss
-        q_loss.backward()
-        self.forward_backward_toggle = False
-
-        # update Q every something steps
-        # if new_game_state['step'] % UPDATE_FREQ == 0:
+                y_j = transition[3]
+            
+            # Calculate Q-loss for this transition
+            q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+            
+            # Accumulate the loss
+            total_loss = q_loss + total_loss
+        
+        # Backpropagate after processing the whole batch
+        total_loss.backward()
+        
+        # Update model parameters and learning rate
         self.optimizer.step()
         self.scheduler.step()
 
@@ -130,37 +128,45 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.transitions.append(Transition(state_to_features(last_game_state), last_action, None, reward_from_events(self, events)))
 
     #self.scores.append(last_game_state["self"][1])
+    self.optimizer.zero_grad()
 
     #if not e.SURVIVED_ROUND in events:
+    if len(self.transitions) < BATCH_SIZE:
+        batch = random.sample(list(self.transitions), len(self.transitions))
+    else:
+        batch = random.sample(list(self.transitions), BATCH_SIZE)
 
-    self.optimizer.zero_grad()
-    batch = random.sample(list(self.transitions), BATCH_SIZE)
 
-    q_loss = torch.tensor([0.])
+    total_loss = 0#torch.tensor([0.], requires_grad=True)  # Accumulate loss over the batch
     for transition in batch:
         y_j = transition[3]
         #self.logger.debug(f"Model output: {self.model.out[0][ACTIONS.index(self_action)]}")
-        q_loss = q_loss + (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+        q_loss = (y_j - self.model(transition[0])[0][ACTIONS.index(transition[1])])**2
+        total_loss = q_loss + total_loss
+    # Backpropagate after processing the whole batch
+    total_loss.backward()
     
-    # calculate loss
-    """if self.forward_backward_toggle == False:
-        print("-------------------forward backward toggle violation!----------------")
-    else:"""
-    q_loss.backward()
-
+    # Update model parameters and learning rate
     self.optimizer.step()
     self.scheduler.step()
+    if e.KILLED_OPPONENT in events:
+        print("Killed opponent")
+    for param_group in self.optimizer.param_groups:
+        current_lr = param_group['lr']
+        self.logger.debug(f"Learning rate after scheduler step: {current_lr}")
+
 
     # every C-steps: update Q^
     if last_game_state['step'] % TARGET_UPDATE_FREQ == 0:
         self.target_model.load_state_dict(copy.deepcopy(self.model.state_dict()))
         self.target_model.train = False
-
+    
     _, score, _, _ = last_game_state["self"]
-    round = last_game_state["round"]
+    step = last_game_state["step"]
     self.scores.append(score)
-    plot_scores(self.scores, round)
-    #print(last_game_state["self"][1])
+    self.step.append(step)
+    plot_scores(self.scores, self.step)
+    
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
@@ -184,12 +190,12 @@ def reward_from_events(self, events: List[str]) -> int:
         e.GOT_KILLED: -15,
         e.KILLED_SELF: -15,
         e.BOMB_DROPPED: 0.1,
-        e.KILLED_OPPONENT: 5,
+        e.KILLED_OPPONENT: 40,
         e.CRATE_DESTROYED: 0.1,
         #e.INVALID_ACTION: -0.05,
-        e.CLOSER_TO_COIN_EVENT: 0.1,
+        e.CLOSER_TO_COIN_EVENT: 5,
         e.FURTHER_FROM_COIN_EVENT: -0.1,
-        e.TOO_LONG_EVENT: -1
+        e.TOO_LONG_EVENT: -5
     }
     reward_sum = 0
     for event in events:
@@ -218,10 +224,17 @@ def is_closer_to_coin(old_game_state, new_game_state):
 
     return new_distance < old_distance
 
-def plot_scores(scores, round):
-    plt.figure()
-    plt.plot(np.arange(len(scores)), scores)
-    plt.plot(np.arange(len(scores)), round)
+def plot_scores(scores, step):
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    
+    ax1.plot(np.arange(len(scores)), step, color = "blue")
+    ax2.plot(np.arange(len(scores)), scores, color = "orange")
 
-    plt.savefig("scores.pdf", format="pdf")
+    ax1.set_xlabel("Round")
+    ax1.set_ylabel("Steps needed")
+
+    ax2.set_ylabel("Score")
+
+    fig.savefig("scores.pdf", format="pdf")
     plt.close()

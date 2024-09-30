@@ -7,14 +7,14 @@ import numpy as np
 import torch
 
 
-ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']# , 'WAIT', 'BOMB']
+ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT' , 'WAIT', 'BOMB']
 
 
 
 
 class DQL_Model(torch.nn.Module):
 
-    def __init__(self, n_hidden: int = 128, n_outputs: int = 4, dropout: float = 0.15):
+    def __init__(self, n_hidden: int = 128, n_outputs: int = 6, dropout: float = 0.15):
         super().__init__()
         # new input size 1x4x9x9
         self.conv_1 = torch.nn.Conv2d(
@@ -27,10 +27,11 @@ class DQL_Model(torch.nn.Module):
             in_channels=128, out_channels=32, kernel_size=3)
         self.act_2 = torch.nn.ReLU()
         # new output size: 1x32x5x5
-
+        self.maxPool = torch.nn.MaxPool2d(kernel_size=2)
+        # new outpus size:  1x32x2x2
         self.flat = torch.nn.Flatten()
         # new outpus size: 800
-        self.lin = torch.nn.Linear(800, n_outputs)
+        self.lin = torch.nn.Linear(128, n_outputs)
 
         self.out = None
         print("Cuda is available:", torch.cuda.is_available())
@@ -47,7 +48,7 @@ class DQL_Model(torch.nn.Module):
         output = self.drop_1(output)
 
         output = self.act_2(self.conv_2(output))
-        #output = self.maxPool(output)
+        output = self.maxPool(output)
 
         output = self.lin(self.flat(output))
         self.out = output
@@ -73,9 +74,10 @@ def setup(self):
     self.forward_backward_toggle = False
     self.current_round = 0
     self.scores = []
+    self.step = []
     self.max_epsilon = 1.0           
-    self.min_epsilon = 0.01           
-    self.decay_rate = 1e-4
+    self.min_epsilon = 0.1           
+    self.decay_rate = 5e-4
     
     if self.train or not os.path.isfile("my-saved-model.pt"):
         #self.logger.info("Setting up model from scratch.")
@@ -117,8 +119,8 @@ def act(self, game_state: dict) -> str:
     if (x + 1, y) in valid_tiles: valid_actions.append('RIGHT')
     if (x, y - 1) in valid_tiles: valid_actions.append('UP')
     if (x, y + 1) in valid_tiles: valid_actions.append('DOWN')
-    # if (x, y) in valid_tiles: valid_actions.append('WAIT')
-    # valid_actions.append('BOMB') # maybe edit when training with bombs
+    if (x, y) in valid_tiles: valid_actions.append('WAIT')
+    valid_actions.append('BOMB') # maybe edit when training with bombs
 
     epsilon = self.min_epsilon + (self.max_epsilon - self.min_epsilon)*np.exp(-self.decay_rate*game_state["round"])
     
