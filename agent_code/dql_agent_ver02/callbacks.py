@@ -31,7 +31,7 @@ class DQL_Model(torch.nn.Module):
         # new outpus size:  1x32x2x2
         self.flat = torch.nn.Flatten()
         # new outpus size: 800
-        self.lin = torch.nn.Linear(128, n_outputs)
+        self.lin = torch.nn.Linear(1152, n_outputs)
 
         self.out = None
         print("Cuda is available:", torch.cuda.is_available())
